@@ -1,9 +1,12 @@
 # Architecture
 
-Hidden Bar is a single-process, sandboxed AppKit menubar utility (~1.5k lines of
+Hidden Bar is a single-process AppKit menubar utility (~1.5k lines of
 Swift, one dependency: [HotKey](https://github.com/soffes/HotKey)). There is no
 helper app, no daemon, no network. Everything happens inside three
 `NSStatusItem`s and one window.
+
+The Direct build is unsandboxed and uses native visibility on macOS 27.
+The App Store build retains the sandbox and legacy length mechanism.
 
 ## The core trick
 
@@ -64,7 +67,13 @@ flowchart TD
   The controller calls `collapse` / `expand` / `updateAlwaysHiddenSection` /
   `invalidateLayout` and never writes a status-item length itself.
   `MenuBarEngineFactory` is the one place that picks an engine for the running
-  OS; today that is always `LegacyLengthEngine` (the length trick below).
+  OS: Direct builds select `NativeVisibilityEngine` on macOS 27+, and other
+  configurations use `LegacyLengthEngine`.
+- **Native interaction**: the `|` divider remains fixed-width and defines the
+  sections independently of the arrow. Command-drag temporarily releases the
+  always-hidden assertion, then reads a settled, unrestricted layout. A pending
+  shortcut collapse survives layout/activation work through
+  `DeferredCollapseRequest`; uncertain AX inventories fail open.
 - **`Preferences`** (facade enum): typed accessors over `UserDefaults`; setters
   post `NotificationCenter` notifications that the controller and prefs window
   observe. There is no other state store.
@@ -90,7 +99,8 @@ garbage-collects those; see Apple TN3111). The helper app itself is gone.
 
 ## Security posture
 
-Sandboxed (`com.apple.security.app-sandbox`), hardened runtime, no network
+The App Store build is sandboxed (`com.apple.security.app-sandbox`); the Direct
+build requires Accessibility permission for menu-bar inventory. No network
 entitlement, no file I/O, no IPC surface, no shell or subprocess use. The only
 dependency is HotKey (a small Carbon `RegisterEventHotKey` wrapper) locked by
 the committed `Package.resolved`. The opt-in hover monitor observes pointer
@@ -102,9 +112,10 @@ A full-tree audit (2026-06) scored 9/10 with hygiene-level findings only.
 - **The notch**: hidden icons sit "under" the notch area on notched Macs; the
   trick cannot reveal them there. The real fix is a spillover/second-bar design
   (tracked in issues #357/#341/#148; candidate implementations in PRs #350/#358).
-- **macOS 27**: the menu bar re-architecture in macOS 27 betas
-  (`NSMenuBarNavigationSceneExtension`) breaks length-inflation hiding entirely
-  (issue #360). A different mechanism may be required.
+- **macOS 27**: the menu bar re-architecture breaks length-inflation hiding
+  (issue #360). The Direct engine uses a private native framework, which may
+  change in future macOS updates. Native hiding applies per app; uncertain AX
+  reads keep the bar expanded rather than hiding the wrong apps.
 - **Other apps' open menus**: interaction-awareness is pointer-position-based;
   a pointer deep inside another app's open dropdown is below the menubar band,
   so the collapse can still fire there.

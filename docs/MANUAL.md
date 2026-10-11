@@ -14,11 +14,16 @@ Everything Hidden Bar can do, including the parts with no UI.
 
 ### macOS 27, direct download build
 
-The direct (non-App Store) build hides icons natively on macOS 27, and the
-**arrow itself is the boundary**: there is no `|` separator. ⌘-drag icons to
-the arrow's left to hide them when collapsed, to its right to keep them
-visible. The always-hidden separator still appears (while expanded) when that
-section is enabled.
+The direct (non-App Store) build hides icons natively on macOS 27. In this fork,
+the draggable `|` divider is restored: icons on its left hide when collapsed,
+and icons on its right stay visible. The native engine keeps the arrow visible
+on either side of the divider.
+Expand before rearranging icons. Hiding and position scanning pause while ⌘
+or the left mouse button is held. Rearranging temporarily reveals the
+always-hidden area; its positions are re-read after the drop. Command-based
+shortcuts expand immediately, and collapse after key-up and layout recovery.
+The always-hidden divider still appears
+while expanded when that section is enabled.
 
 - Needs **Accessibility** permission (System Settings › Privacy & Security ›
   Accessibility) to see where your icons are. Without it the bar stays

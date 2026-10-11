@@ -14,25 +14,26 @@ import ServiceManagement
 
 class AppDelegate: NSObject, NSApplicationDelegate{
     
-    var statusBarController = StatusBarController()
+    lazy var statusBarController = StatusBarController()
 
     var hotKey: HotKey? {
         didSet {
             guard let hotKey = hotKey else { return }
 
             hotKey.keyDownHandler = { [weak self] in
-                self?.statusBarController.expandCollapseIfNeeded()
+                self?.statusBarController.expandCollapseIfNeeded(isShortcut: true)
             }
         }
     }
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
         guard ensureSingleInstance() else { return }
-        setupAutoStartApp()
         registerDefaultValues()
+        detectLTRLang()
+        _ = statusBarController
+        setupAutoStartApp()
         setupHotKey()
         openPreferencesIfNeeded()
-        detectLTRLang()
     }
 
     /// Hidden Bar is a menu bar utility with no visible window, so launching it a

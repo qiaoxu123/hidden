@@ -1,16 +1,27 @@
 # Changelog
 
-## [Unreleased] - 2026-10-11
+## [1.11.2] - 2026-10-11
 
 ### Features
 - Added `scripts/build-local-direct.sh` to build and ad-hoc sign a local Direct app, with checks for App Sandbox and the native macOS 27 engine.
+- Restored the draggable `|` boundary on macOS 27, with localized accessibility labels and tooltips.
+
+### Fixed
+- Pause hiding and cancel Accessibility walks during Command-drag; discard late activations that would interfere with dragging.
+- Read the divider position after asynchronous inventory delivery, and rebuild sections when always-hidden settings change.
+- Cancel an in-flight collapse by clicking the arrow again. Avoid duplicate visibility requests and cancel disabled auto-hide timers.
+- Initialize preferences and layout direction before creating menu-bar items.
+- Fail open on uncertain AX reads. Reveal the always-hidden area for rearrangement and re-read positions after a short settling delay.
+- Preserve Command-based global shortcuts: expand immediately, and defer collapse until key-up.
 
 ### Design Rationale
 - Reuse the upstream native engine. A sandboxed v1.11 install on macOS 27.0.1 cannot use it; explicitly selecting `Release-Direct` avoids reproducing that build configuration mistake.
+- Keep a fixed-width divider so the tutorial and arrangement gestures stay consistent across macOS versions. Interrupted inventories fail open rather than applying a partial allow-list.
 
 ### Notes & Caveats
 - Local builds are not notarized. Run from `/Applications` and allow Accessibility. Native hiding uses a private framework and applies per app.
 - The legacy installed app can be retained for rollback. Sandboxed preferences may need to be reconfigured in the Direct app.
+- On macOS 27 the arrow may sit on either side of the divider, since this app's bundle stays visible. Older macOS versions retain the legacy arrangement requirement. Drag responsiveness still depends on the macOS menu-bar implementation; automated tests cover cancellation races, not frame-time performance.
 
 ## v1.11.1 (2026-09-18)
 

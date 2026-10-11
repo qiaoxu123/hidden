@@ -36,7 +36,8 @@ protocol MenuBarInventoryProviding: AnyObject {
     // Every other app's status items, delivered on the main queue. Only meaningful
     // while nothing is hidden: once a native visibility assertion is active,
     // hidden items report stale frames.
-    func snapshot(completion: @escaping ([MenuBarInventoryItem]) -> Void)
+    // nil means the walk was cancelled; partial inventories must never hide apps.
+    func snapshot(completion: @escaping ([MenuBarInventoryItem]?) -> Void)
 }
 
 struct MenuBarLayout: Equatable {

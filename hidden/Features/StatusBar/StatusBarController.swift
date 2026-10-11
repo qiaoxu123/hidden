@@ -45,6 +45,13 @@ class StatusBarController: MenuBarItemProvider {
 
     private var hoverMonitor: Any?
     private var hoverDwellTimer: Timer?
+    private var rearrangementMonitor: Any?
+    private var localRearrangementMonitor: Any?
+    private var rearrangementActive = false
+    private var rearrangementEnd: DispatchWorkItem?
+    private var shortcutCollapseTimer: Timer?
+    private let deferredCollapse = DeferredCollapseRequest()
+    private var loggedInvalidArrangement = false
 
     // True while the pointer sits in any screen's menubar band (the strip between
     // visibleFrame.maxY and frame.maxY, which is the menubar's exact height there).
@@ -74,6 +81,7 @@ class StatusBarController: MenuBarItemProvider {
         setupUI()
         restoreRemovedStatusItems()
         setupAlwayHideStatusBar()
+        setupRearrangementMonitoring()
         setupHoverToExpandIfEnabled()
         NotificationCenter.default.addObserver(self, selector: #selector(handleScreenParametersChanged), name: NSApplication.didChangeScreenParametersNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(updateAutoHide), name: .prefsChanged, object: nil)
@@ -87,10 +95,61 @@ class StatusBarController: MenuBarItemProvider {
 
     deinit {
         NotificationCenter.default.removeObserver(self)
+        timer?.invalidate()
+        shortcutCollapseTimer?.invalidate()
+        rearrangementEnd?.cancel()
         hoverDwellTimer?.invalidate()
         if let monitor = hoverMonitor {
             NSEvent.removeMonitor(monitor)
         }
+        if let monitor = rearrangementMonitor { NSEvent.removeMonitor(monitor) }
+        if let monitor = localRearrangementMonitor { NSEvent.removeMonitor(monitor) }
+    }
+
+    private func setupRearrangementMonitoring() {
+        guard menuBarEngine is NativeVisibilityEngine else { return }
+        let mask: NSEvent.EventTypeMask = [.flagsChanged, .mouseMoved, .leftMouseDown, .leftMouseDragged, .leftMouseUp]
+        rearrangementMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
+            self?.handleRearrangementInput()
+        }
+        localRearrangementMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            self?.handleRearrangementInput()
+            return event
+        }
+    }
+
+    private func handleRearrangementInput() {
+        let commandPressed = NSEvent.modifierFlags.contains(.command)
+        let mousePressed = NSEvent.pressedMouseButtons & 1 != 0
+        if commandPressed && isMouseInMenuBar && !mousePressed && !isCollapsed {
+            beginRearrangement()
+        }
+        guard rearrangementActive else { return }
+        if commandPressed || mousePressed {
+            rearrangementEnd?.cancel()
+            rearrangementEnd = nil
+            return
+        }
+        guard rearrangementEnd == nil else { return }
+        // Let macOS finish reflowing after a drop before reading positions.
+        let work = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.rearrangementEnd = nil
+            guard !NSEvent.modifierFlags.contains(.command), NSEvent.pressedMouseButtons & 1 == 0 else { return }
+            self.rearrangementActive = false
+            self.menuBarEngine.expand()
+            self.autoCollapseIfNeeded()
+        }
+        rearrangementEnd = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    private func beginRearrangement() {
+        guard !rearrangementActive else { return }
+        rearrangementActive = true
+        timer?.invalidate()
+        menuBarEngine.revealForRearrangement()
+        didFailToCollapseMenuBar()
     }
 
     // Opt-in via `defaults write com.dwarvesv.minimalbar hoverToExpand -bool true`.
@@ -100,7 +159,8 @@ class StatusBarController: MenuBarItemProvider {
         NSLog("HoverToExpand: enabled, installing global mouse monitor")
         hoverMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
             guard let self = self else { return }
-            guard self.isCollapsed && self.isMouseInMenuBar else {
+            guard self.isCollapsed && self.isMouseInMenuBar &&
+                    !NSEvent.modifierFlags.contains(.command) && NSEvent.pressedMouseButtons & 1 == 0 else {
                 self.hoverDwellTimer?.invalidate()
                 self.hoverDwellTimer = nil
                 return
@@ -110,7 +170,8 @@ class StatusBarController: MenuBarItemProvider {
             self.hoverDwellTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
                 guard let self = self else { return }
                 self.hoverDwellTimer = nil
-                if self.isCollapsed && self.isMouseInMenuBar {
+                if self.isCollapsed && self.isMouseInMenuBar &&
+                    !NSEvent.modifierFlags.contains(.command) && NSEvent.pressedMouseButtons & 1 == 0 {
                     self.expandMenubar()
                 }
             }
@@ -133,8 +194,7 @@ class StatusBarController: MenuBarItemProvider {
         // the app's only UI, so they self-restore at launch.
         btnExpandCollapse.isVisible = true
         btnSeparate.isVisible = true
-        // Create the engine now so one that does not use the separator (macOS 27
-        // native hiding) takes it back out before it is ever drawn.
+        // Create the engine now so the separator has its engine's normal width.
         _ = menuBarEngine
     }
 
@@ -144,6 +204,8 @@ class StatusBarController: MenuBarItemProvider {
             button.target = self
             button.action = #selector(self.showContextMenuFromSeparator(sender:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            button.toolTip = "Command-drag this divider to choose which icons are hidden".localized
+            button.setAccessibilityLabel("Hidden area divider".localized)
         }
 
         if let button = btnExpandCollapse.button {
@@ -152,6 +214,8 @@ class StatusBarController: MenuBarItemProvider {
             
             button.action = #selector(self.btnExpandCollapsePressed(sender:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
+            button.toolTip = "Collapse hidden menu bar icons".localized
+            button.setAccessibilityLabel(button.toolTip)
         }
         
         btnExpandCollapse.autosaveName = "hiddenbar_expandcollapse";
@@ -210,9 +274,8 @@ class StatusBarController: MenuBarItemProvider {
     }
     
     func showHideSeparatorsAndAlwayHideArea() {
+        if isCollapsed || menuBarEngine.state == .calibrating { expandMenubar() }
         Preferences.areSeparatorsHidden ? self.showSeparators() : self.hideSeparators()
-        
-        if self.isCollapsed {self.expandMenubar()}
     }
     
     private func showSeparators() {
@@ -235,21 +298,61 @@ class StatusBarController: MenuBarItemProvider {
         menuBarEngine.updateAlwaysHiddenSection(enabled: Preferences.alwaysHiddenSectionEnabled, separatorHidden: true)
     }
     
-    func expandCollapseIfNeeded() {
+    func expandCollapseIfNeeded(isShortcut: Bool = false) {
+        let commandPressed = NSEvent.modifierFlags.contains(.command)
+        let action = MenuBarToggleActionResolver.action(state: menuBarEngine.state, isShortcut: isShortcut,
+            commandPressed: commandPressed, leftMousePressed: NSEvent.pressedMouseButtons & 1 != 0,
+            hasDeferredCollapse: deferredCollapse.isPending)
+        guard action != .ignore else { return }
         //prevented rapid click cause icon show many in Dock
         if isToggle {return}
         isToggle = true
-        self.isCollapsed ? self.expandMenubar() : self.collapseMenuBar()
+        switch action {
+        case .expand:
+            expandMenubar()
+            if isShortcut && commandPressed && menuBarEngine is NativeVisibilityEngine { beginRearrangement() }
+        case .collapse:
+            collapseMenuBar()
+        case .deferCollapse:
+            timer?.invalidate()
+            deferredCollapse.request()
+            shortcutCollapseTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] timer in
+                guard let self = self else { return timer.invalidate() }
+                let interactionActive = NSEvent.modifierFlags.contains(.command) ||
+                    NSEvent.pressedMouseButtons & 1 != 0 || self.rearrangementActive
+                self.deferredCollapse.performIfReady(isInteractionActive: interactionActive, engine: self.menuBarEngine) {
+                    timer.invalidate()
+                    self.shortcutCollapseTimer = nil
+                    self.collapseMenuBar()
+                }
+            }
+        case .cancelDeferredCollapse:
+            deferredCollapse.cancel()
+            shortcutCollapseTimer?.invalidate()
+            shortcutCollapseTimer = nil
+            autoCollapseIfNeeded()
+        case .ignore:
+            break
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             self?.isToggle = false
         }
     }
     
     private func collapseMenuBar() {
-        guard menuBarEngine.isArrangementValid && !self.isCollapsed else {
+        guard !rearrangementActive, !NSEvent.modifierFlags.contains(.command), NSEvent.pressedMouseButtons & 1 == 0 else {
             autoCollapseIfNeeded()
             return
         }
+        guard menuBarEngine.isArrangementValid && !self.isCollapsed else {
+            if !menuBarEngine.isArrangementValid && !loggedInvalidArrangement {
+                loggedInvalidArrangement = true
+                NSLog("MenuBar: move the divider to the hidden side of the arrow; divider=\(String(describing: btnSeparate.button?.window?.frame)), arrow=\(String(describing: btnExpandCollapse.button?.window?.frame))")
+            }
+            autoCollapseIfNeeded()
+            return
+        }
+        loggedInvalidArrangement = false
 
         menuBarEngine.collapse { [weak self] result in
             guard let self = self else { return }
@@ -268,16 +371,23 @@ class StatusBarController: MenuBarItemProvider {
     private func didFailToCollapseMenuBar() {
         if let button = btnExpandCollapse.button {
             button.image = Assets.collapseImage
+            button.toolTip = "Collapse hidden menu bar icons".localized
+            button.setAccessibilityLabel(button.toolTip)
         }
         if Preferences.useFullStatusBarOnExpandEnabled {
             NSApp.setActivationPolicy(.regular)
         }
+        autoCollapseIfNeeded()
     }
 
     private func didCollapseMenuBar() {
         if let button = btnExpandCollapse.button {
             button.image = Assets.expandImage
+            button.toolTip = "Expand hidden menu bar icons".localized
+            button.setAccessibilityLabel(button.toolTip)
         }
+        timer?.invalidate()
+        timer = nil
         if Preferences.useFullStatusBarOnExpandEnabled {
             NSApp.setActivationPolicy(.accessory)
             NSApp.deactivate()
@@ -285,10 +395,13 @@ class StatusBarController: MenuBarItemProvider {
     }
 
     private func expandMenubar() {
-        guard self.isCollapsed else {return}
+        guard isCollapsed || menuBarEngine.state == .calibrating else {return}
+        timer?.invalidate()
         menuBarEngine.expand()
         if let button = btnExpandCollapse.button {
             button.image = Assets.collapseImage
+            button.toolTip = "Collapse hidden menu bar icons".localized
+            button.setAccessibilityLabel(button.toolTip)
         }
         autoCollapseIfNeeded()
         
@@ -300,6 +413,9 @@ class StatusBarController: MenuBarItemProvider {
     }
     
     private func autoCollapseIfNeeded() {
+        timer?.invalidate()
+        timer = nil
+        guard !rearrangementActive, !deferredCollapse.isPending else { return }
         guard Preferences.isAutoHide else {return}
         guard !isCollapsed else { return }
 
@@ -314,7 +430,8 @@ class StatusBarController: MenuBarItemProvider {
             // menubar (hovering, clicking, dragging icons), defer and re-arm.
             // Intentionally unbounded; each re-arm invalidates the previous timer,
             // so deferral never accumulates timers.
-            if self.isMouseInMenuBar || self.isPreferencesWindowVisible {
+            if self.isMouseInMenuBar || self.isPreferencesWindowVisible ||
+                NSEvent.modifierFlags.contains(.command) || NSEvent.pressedMouseButtons & 1 != 0 {
                 self.startTimerToAutoHide()
             } else {
                 self.collapseMenuBar()
@@ -376,23 +493,26 @@ extension StatusBarController {
         toggleStatusBarIfNeeded()
     }
     @objc private func toggleStatusBarIfNeeded() {
+        if isCollapsed || menuBarEngine.state == .calibrating { expandMenubar() }
         if Preferences.alwaysHiddenSectionEnabled {
             if let existing = self.btnAlwaysHidden {
                 NSStatusBar.system.removeStatusItem(existing)
             }
             self.btnAlwaysHidden = NSStatusBar.system.statusItem(withLength: 0)
-            menuBarEngine.updateAlwaysHiddenSection(enabled: true, separatorHidden: false)
             if let button = btnAlwaysHidden?.button {
                 button.image = self.imgIconLine
                 button.appearsDisabled = true
             }
             self.btnAlwaysHidden?.autosaveName = "hiddenbar_terminate"
             self.btnAlwaysHidden?.isVisible = true
+            menuBarEngine.updateAlwaysHiddenSection(enabled: true, separatorHidden: Preferences.areSeparatorsHidden)
         } else {
             if let existing = self.btnAlwaysHidden {
                 NSStatusBar.system.removeStatusItem(existing)
             }
             self.btnAlwaysHidden = nil
+            menuBarEngine.updateAlwaysHiddenSection(enabled: false, separatorHidden: Preferences.areSeparatorsHidden)
         }
+        autoCollapseIfNeeded()
     }
 }

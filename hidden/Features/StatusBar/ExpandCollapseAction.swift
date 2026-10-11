@@ -29,3 +29,20 @@ enum ExpandCollapseActionResolver {
         }
     }
 }
+
+// Explicit Command shortcuts remain usable while Command is held. A collapse
+// waits for key-up; a drag or a Command-click on the item never toggles it.
+enum MenuBarToggleAction {
+    case ignore, expand, collapse, deferCollapse, cancelDeferredCollapse
+}
+
+enum MenuBarToggleActionResolver {
+    static func action(state: MenuBarEngineState, isShortcut: Bool,
+                       commandPressed: Bool, leftMousePressed: Bool,
+                       hasDeferredCollapse: Bool) -> MenuBarToggleAction {
+        guard !leftMousePressed, isShortcut || !commandPressed else { return .ignore }
+        if hasDeferredCollapse { return .cancelDeferredCollapse }
+        if state == .collapsed || state == .calibrating { return .expand }
+        return isShortcut && commandPressed ? .deferCollapse : .collapse
+    }
+}

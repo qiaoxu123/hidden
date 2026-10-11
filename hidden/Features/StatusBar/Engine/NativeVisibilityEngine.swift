@@ -14,9 +14,9 @@ import AppKit
 // assessment mode. macOS then hides the rest and reflows the bar itself, so the
 // result does not depend on display width, the notch or the frontmost app's menus.
 //
-// The arrow is the boundary: apps left of it (LTR) are hidden, apps right of it
-// stay visible. The regular separator is not needed and is taken out of the
-// bar; even at zero width macOS keeps a gap for it. The always-hidden
+// The draggable separator is the boundary, as on older macOS versions. It stays
+// at its normal width: native hiding removes other apps without inflating it.
+// The always-hidden
 // separator, when enabled, marks the third section; it shows while expanded so
 // it can be ⌘-dragged, and drops to zero width while collapsed, where macOS
 // has already removed everything it would separate. It keeps its slot because
@@ -42,6 +42,7 @@ final class NativeVisibilityEngine: MenuBarEngine {
     private let ownBundleIdentifier: String?
     private let itemFrame: (NSStatusItem) -> CGRect?
     private let isLTR: () -> Bool
+    private let isInteractionActive: () -> Bool
 
     private let expandedLength: CGFloat = 20
 
@@ -53,24 +54,33 @@ final class NativeVisibilityEngine: MenuBarEngine {
     // Bumped whenever a pending activation must no longer win (an expand, a newer
     // activation); a late success is then invalidated straight away.
     private var generation = 0
+    private var activationPending = false
+    private var layoutPending = false
+    var isBusy: Bool { layoutPending || activationPending || state == .calibrating }
     private var lastUnavailableReason: String?
 
     private var alwaysHiddenEnabled = false
     private var alwaysHiddenSeparatorHidden = false
+    private var hasConfiguredSection = false
 
     init(items: MenuBarItemProvider,
          inventory: MenuBarInventoryProviding = AccessibilityMenuBarInventory(),
          visibility: NativeVisibilityProviding = NativeVisibilityBridge(),
          ownBundleIdentifier: String? = Bundle.main.bundleIdentifier,
          itemFrame: @escaping (NSStatusItem) -> CGRect? = { $0.button?.window?.frame },
-         isLTR: @escaping () -> Bool = { Constant.isUsingLTRLanguage }) {
+         isLTR: @escaping () -> Bool = { Constant.isUsingLTRLanguage },
+         isInteractionActive: @escaping () -> Bool = {
+             NSEvent.modifierFlags.contains(.command) || NSEvent.pressedMouseButtons & 1 != 0
+         }) {
         self.items = items
         self.inventory = inventory
         self.visibility = visibility
         self.ownBundleIdentifier = ownBundleIdentifier
         self.itemFrame = itemFrame
         self.isLTR = isLTR
-        items.separatorItem.isVisible = false
+        self.isInteractionActive = isInteractionActive
+        items.separatorItem.length = expandedLength
+        items.separatorItem.isVisible = true
     }
 
     func collapse(completion: @escaping (CollapseResult) -> Void) {
@@ -82,6 +92,9 @@ final class NativeVisibilityEngine: MenuBarEngine {
             return
         case .expanded, .unavailable:
             break
+        }
+        guard !isInteractionActive(), !activationPending, !layoutPending else {
+            return completion(.unavailable)
         }
         setSeparatorsVisible(true)
 
@@ -102,7 +115,7 @@ final class NativeVisibilityEngine: MenuBarEngine {
         withLayout { [weak self] layout in
             guard let self = self else { return }
             guard let layout = layout else {
-                self.logUnavailableOnce("the arrow's position cannot be read yet")
+                self.logUnavailableOnce("layout reading was deferred or the divider is not ready")
                 self.state = .expanded
                 return completion(.unavailable)
             }
@@ -123,7 +136,22 @@ final class NativeVisibilityEngine: MenuBarEngine {
         applyExpandedPresentation()
     }
 
+    func revealForRearrangement() {
+        releaseAssertion()
+        layout = nil
+        state = .expanded
+        setSeparatorsVisible(true)
+    }
+
     func updateAlwaysHiddenSection(enabled: Bool, separatorHidden: Bool) {
+        guard !hasConfiguredSection || alwaysHiddenEnabled != enabled ||
+                alwaysHiddenSeparatorHidden != separatorHidden else { return }
+        hasConfiguredSection = true
+        // Section changes invalidate a layout read under the old divider setup.
+        // Reveal first, so the new always-hidden boundary can be measured.
+        releaseAssertion()
+        layout = nil
+        state = .expanded
         alwaysHiddenEnabled = enabled
         alwaysHiddenSeparatorHidden = separatorHidden
         if state != .collapsed {
@@ -165,20 +193,26 @@ final class NativeVisibilityEngine: MenuBarEngine {
         if assertion != nil {
             return body(layout)
         }
-        guard let arrow = items?.toggleItem,
-              let boundary = itemFrame(arrow) else { return body(nil) }
-        let alwaysHiddenFrame = alwaysHiddenEnabled ? items?.alwaysHiddenItem.flatMap(itemFrame) : nil
-        let isLTR = self.isLTR()
         generation += 1
         let generation = self.generation
+        layoutPending = true
         inventory.snapshot { [weak self] inventory in
             guard let self = self, generation == self.generation else { return }
+            self.layoutPending = false
+            guard !self.isInteractionActive() else { return body(nil) }
+            guard let inventory = inventory else { return body(nil) }
+            guard self.isArrangementValid else { return body(nil) }
+            // Reading the inventory is asynchronous; the user may have moved a
+            // separator during it. Read the current boundary at delivery time.
+            guard let separator = self.items?.separatorItem,
+                  let boundary = self.itemFrame(separator) else { return body(nil) }
+            let alwaysHiddenFrame = self.alwaysHiddenEnabled ? self.items?.alwaysHiddenItem.flatMap(self.itemFrame) : nil
             let layout = MenuBarLayoutResolver.resolve(inventory: inventory,
                                                        separatorFrame: boundary,
                                                        alwaysHiddenSeparatorFrame: alwaysHiddenFrame,
-                                                       isLTR: isLTR,
+                                                       isLTR: self.isLTR(),
                                                        excludingBundle: self.ownBundleIdentifier)
-            NSLog("NativeVisibility: arrow at x=\(boundary.midX); visible \(layout.bundles(in: [.visible])), hidden \(layout.bundles(in: [.hidden])), always hidden \(layout.bundles(in: [.alwaysHidden]))")
+            NSLog("NativeVisibility: divider x=\(boundary.midX), \(layout.sections.count) apps classified")
             self.layout = layout
             body(layout)
         }
@@ -187,8 +221,13 @@ final class NativeVisibilityEngine: MenuBarEngine {
     // Activates the new restriction before dropping the old one, so switching
     // between collapsed and expanded never flashes the whole bar visible.
     private func activate(allowing bundles: [String], completion: @escaping (Bool) -> Void) {
+        guard !isInteractionActive() else {
+            releaseAssertion()
+            return completion(false)
+        }
         generation += 1
         let generation = self.generation
+        activationPending = true
         let allowed = (ownBundleIdentifier.map { [$0] } ?? []) + bundles
         visibility.activate(allowedSystemItems: Self.systemItemsToKeep,
                             allowedBundleIdentifiers: allowed) { [weak self] result in
@@ -196,11 +235,18 @@ final class NativeVisibilityEngine: MenuBarEngine {
                 if case .success(let stale) = result { stale.invalidate() }
                 return
             }
+            self.activationPending = false
             switch result {
             case .success(let newAssertion):
+                guard !self.isInteractionActive() else {
+                    newAssertion.invalidate()
+                    self.releaseAssertion()
+                    return completion(false)
+                }
                 let old = self.assertion
                 self.assertion = newAssertion
                 old?.invalidate()
+                NSLog("NativeVisibility: restriction active for \(allowed.count) allowed apps")
                 completion(true)
             case .failure(let error):
                 // Fail open: never leave icons hidden after an error.
@@ -214,21 +260,31 @@ final class NativeVisibilityEngine: MenuBarEngine {
     // The always-hidden separator goes to zero width rather than isVisible =
     // false, which would make macOS forget where the user placed it.
     private func setSeparatorsVisible(_ visible: Bool) {
-        items?.separatorItem.isVisible = false
-        items?.alwaysHiddenItem?.length = visible && alwaysHiddenEnabled ? expandedLength : 0
+        if let separator = items?.separatorItem {
+            if separator.length != expandedLength { separator.length = expandedLength }
+            if !separator.isVisible { separator.isVisible = true }
+        }
+        let length = visible && alwaysHiddenEnabled ? expandedLength : 0
+        if let separator = items?.alwaysHiddenItem, separator.length != length {
+            separator.length = length
+        }
     }
 
-    // Any arrangement works: whatever sits left of the arrow is the hidden section.
     var isArrangementValid: Bool {
-        return true
+        // Native hiding allows this app's entire bundle, so the arrow stays
+        // visible even if the user puts it on the divider's hidden side.
+        guard let separator = items?.separatorItem, let boundary = itemFrame(separator) else { return false }
+        return boundary.midX.isFinite && boundary.width > 0
     }
 
     var isAlwaysHiddenSeparatorPlaced: Bool {
-        return MenuBarOrder.isItem(items?.alwaysHiddenItem, onHiddenSideOf: items?.toggleItem)
+        return MenuBarOrder.isItem(items?.alwaysHiddenItem, onHiddenSideOf: items?.separatorItem)
     }
 
     private func releaseAssertion() {
         generation += 1
+        activationPending = false
+        layoutPending = false
         assertion?.invalidate()
         assertion = nil
     }

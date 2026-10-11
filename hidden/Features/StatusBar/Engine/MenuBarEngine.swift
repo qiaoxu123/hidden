@@ -13,9 +13,11 @@ import AppKit
 // its own engine without version checks spreading through the controller.
 protocol MenuBarEngine: AnyObject {
     var state: MenuBarEngineState { get }
+    var isBusy: Bool { get }
 
     func collapse(completion: @escaping (CollapseResult) -> Void)
     func expand()
+    func revealForRearrangement()
 
     func updateAlwaysHiddenSection(enabled: Bool, separatorHidden: Bool)
 
@@ -30,6 +32,25 @@ protocol MenuBarEngine: AnyObject {
     // Display geometry changed. Re-applies the collapse to the live items when
     // collapsed, so a hot-plug does not leave a stale length behind (PR #354).
     func invalidateLayout()
+}
+
+extension MenuBarEngine {
+    var isBusy: Bool { state == .calibrating }
+    func revealForRearrangement() { expand() }
+}
+
+// Keep explicit shortcut intent until asynchronous layout recovery is ready.
+final class DeferredCollapseRequest {
+    private(set) var isPending = false
+
+    func request() { isPending = true }
+    func cancel() { isPending = false }
+
+    func performIfReady(isInteractionActive: Bool, engine: MenuBarEngine, action: () -> Void) {
+        guard isPending, !isInteractionActive, !engine.isBusy else { return }
+        isPending = false
+        action()
+    }
 }
 
 enum MenuBarEngineState {

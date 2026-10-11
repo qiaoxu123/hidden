@@ -38,3 +38,30 @@ final class ExpandCollapseActionTests: XCTestCase {
         XCTAssertEqual(ExpandCollapseActionResolver.action(eventType: .otherMouseUp, optionPressed: false), .toggleSeparators)
     }
 }
+
+final class MenuBarToggleActionTests: XCTestCase {
+    func testCommandShortcutExpandsCollapsedBar() {
+        XCTAssertEqual(MenuBarToggleActionResolver.action(state: .collapsed, isShortcut: true,
+            commandPressed: true, leftMousePressed: false, hasDeferredCollapse: false), .expand)
+    }
+
+    func testCommandShortcutCollapseWaitsForKeyUp() {
+        XCTAssertEqual(MenuBarToggleActionResolver.action(state: .expanded, isShortcut: true,
+            commandPressed: true, leftMousePressed: false, hasDeferredCollapse: false), .deferCollapse)
+    }
+
+    func testCommandDragDoesNotToggle() {
+        XCTAssertEqual(MenuBarToggleActionResolver.action(state: .collapsed, isShortcut: true,
+            commandPressed: true, leftMousePressed: true, hasDeferredCollapse: false), .ignore)
+    }
+
+    func testNormalClickCancelsInFlightCollapse() {
+        XCTAssertEqual(MenuBarToggleActionResolver.action(state: .calibrating, isShortcut: false,
+            commandPressed: false, leftMousePressed: false, hasDeferredCollapse: false), .expand)
+    }
+
+    func testSecondShortcutCancelsDeferredCollapse() {
+        XCTAssertEqual(MenuBarToggleActionResolver.action(state: .expanded, isShortcut: true,
+            commandPressed: true, leftMousePressed: false, hasDeferredCollapse: true), .cancelDeferredCollapse)
+    }
+}

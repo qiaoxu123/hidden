@@ -23,3 +23,8 @@
 （再次右键单击 “>” 按钮恢复显示 “持续隐藏区域” 中的图标。）
 祝您使用愉快 😉!
 ";
+
+"Command-drag this divider to choose which icons are hidden" = "按住 ⌘ 拖动分界线，选择要隐藏的图标";
+"Hidden area divider" = "隐藏区域分界线";
+"Collapse hidden menu bar icons" = "折叠菜单栏隐藏区域";
+"Expand hidden menu bar icons" = "展开菜单栏隐藏区域";

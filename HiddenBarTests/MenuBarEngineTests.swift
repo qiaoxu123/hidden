@@ -6,6 +6,7 @@
 //
 
 import AppKit
+import ApplicationServices
 import XCTest
 
 // The engine sources are compiled straight into this bundle (no host app), so
@@ -32,14 +33,20 @@ private final class FakeInventory: MenuBarInventoryProviding {
     var items: [MenuBarInventoryItem] = []
     var authorizationRequests = 0
     var snapshots = 0
+    var defersSnapshots = false
+    var pendingSnapshots: [([MenuBarInventoryItem]?) -> Void] = []
 
     func requestAuthorization() {
         authorizationRequests += 1
     }
 
-    func snapshot(completion: @escaping ([MenuBarInventoryItem]) -> Void) {
+    func snapshot(completion: @escaping ([MenuBarInventoryItem]?) -> Void) {
         snapshots += 1
-        completion(items)
+        if defersSnapshots {
+            pendingSnapshots.append(completion)
+        } else {
+            completion(items)
+        }
     }
 }
 
@@ -171,7 +178,7 @@ final class NativeVisibilityEngineTests: XCTestCase {
         let items = self.items!
         return NativeVisibilityEngine(items: items, inventory: inventory, visibility: visibility,
                                       ownBundleIdentifier: "com.dwarvesv.minimalbar",
-                                      itemFrame: { $0 === items.toggleItem ? separator : alwaysHiddenSeparator },
+                                      itemFrame: { $0 === items.alwaysHiddenItem ? alwaysHiddenSeparator : separator },
                                       isLTR: { true })
     }
 
@@ -183,14 +190,192 @@ final class NativeVisibilityEngineTests: XCTestCase {
         XCTAssertEqual(engine.state, .calibrating)
         XCTAssertEqual(visibility.requests.first?.bundles, ["com.dwarvesv.minimalbar", "com.visible"])
         XCTAssertEqual(visibility.requests.first?.systemItems, NativeVisibilityEngine.systemItemsToKeep)
-        XCTAssertFalse(items.separatorItem.isVisible, "the arrow is the boundary; no separator needed")
+        XCTAssertTrue(items.separatorItem.isVisible, "the draggable divider must stay reachable")
 
         visibility.succeed(0)
         XCTAssertEqual(engine.state, .collapsed)
         XCTAssertEqual(results, [.collapsed])
 
         engine.expand()
-        XCTAssertFalse(items.separatorItem.isVisible)
+        XCTAssertTrue(items.separatorItem.isVisible)
+    }
+
+    func testSeparatorDefinesBoundaryIndependentlyOfArrow() {
+        inventory.items = [item("com.between", x: 1320), item("com.hidden", x: 1250)]
+        let engine = NativeVisibilityEngine(items: items, inventory: inventory, visibility: visibility,
+            ownBundleIdentifier: "com.dwarvesv.minimalbar",
+            itemFrame: { [items = self.items!] statusItem in
+                statusItem === items.toggleItem ? CGRect(x: 1360, y: 0, width: 20, height: 24) : separator
+            }, isLTR: { true })
+        engine.collapse { _ in }
+        XCTAssertEqual(visibility.requests.first?.bundles, ["com.dwarvesv.minimalbar", "com.between"])
+        XCTAssertEqual(items.separatorItem.length, 20)
+    }
+
+    func testReadsCurrentDividerAfterAsyncInventoryFinishes() {
+        inventory.defersSnapshots = true
+        inventory.items = [item("com.moved", x: 1600)]
+        var dividerX: CGFloat = 1300
+        var arrowX: CGFloat = 1500
+        let engine = NativeVisibilityEngine(items: items, inventory: inventory, visibility: visibility,
+            ownBundleIdentifier: "com.dwarvesv.minimalbar",
+            itemFrame: { [items = self.items!] statusItem in
+                CGRect(x: statusItem === items.toggleItem ? arrowX : dividerX, y: 0, width: 20, height: 24)
+            }, isLTR: { true })
+        engine.collapse { _ in }
+        dividerX = 1700
+        arrowX = 1800
+        inventory.pendingSnapshots.removeFirst()(inventory.items)
+        XCTAssertEqual(visibility.requests.first?.bundles, ["com.dwarvesv.minimalbar"])
+    }
+
+    func testUnchangedSectionPreferencesDoNotReactivateRestriction() {
+        let engine = makeEngine()
+        engine.updateAlwaysHiddenSection(enabled: true, separatorHidden: true)
+        let active = visibility.succeed(0)
+        engine.updateAlwaysHiddenSection(enabled: true, separatorHidden: true)
+        XCTAssertEqual(visibility.requests.count, 1)
+        XCTAssertFalse(active.isInvalidated)
+    }
+
+    private func makeInteractiveEngine(_ isActive: @escaping () -> Bool) -> NativeVisibilityEngine {
+        let items = self.items!
+        return NativeVisibilityEngine(items: items, inventory: inventory, visibility: visibility,
+            ownBundleIdentifier: "com.dwarvesv.minimalbar",
+            itemFrame: { $0 === items.alwaysHiddenItem ? alwaysHiddenSeparator : separator },
+            isLTR: { true }, isInteractionActive: isActive)
+    }
+
+    func testDragDefersCollapseWithoutReadingOtherApps() {
+        let engine = makeInteractiveEngine { true }
+        var result: CollapseResult?
+        engine.collapse { result = $0 }
+        XCTAssertEqual(result, .unavailable)
+        XCTAssertEqual(engine.state, .expanded)
+        XCTAssertEqual(inventory.snapshots, 0)
+        XCTAssertTrue(visibility.requests.isEmpty)
+    }
+
+    func testDragStartedDuringInventoryCancelsCollapse() {
+        var dragging = false
+        inventory.defersSnapshots = true
+        let engine = makeInteractiveEngine { dragging }
+        var result: CollapseResult?
+        engine.collapse { result = $0 }
+        dragging = true
+        inventory.pendingSnapshots.removeFirst()(inventory.items)
+        XCTAssertEqual(result, .unavailable)
+        XCTAssertEqual(engine.state, .expanded)
+        XCTAssertTrue(visibility.requests.isEmpty)
+    }
+
+    func testDragStartedDuringActivationReleasesLateRestriction() {
+        var dragging = false
+        let engine = makeInteractiveEngine { dragging }
+        var result: CollapseResult?
+        engine.collapse { result = $0 }
+        dragging = true
+        let restriction = visibility.succeed(0)
+        XCTAssertTrue(restriction.isInvalidated)
+        XCTAssertEqual(result, .unavailable)
+        XCTAssertEqual(engine.state, .expanded)
+    }
+
+    func testCollapseWaitsForPendingAlwaysHiddenActivation() {
+        let engine = makeEngine()
+        engine.updateAlwaysHiddenSection(enabled: true, separatorHidden: true)
+        var result: CollapseResult?
+        engine.collapse { result = $0 }
+        XCTAssertEqual(result, .unavailable)
+        XCTAssertEqual(visibility.requests.count, 1)
+        visibility.succeed(0)
+        engine.collapse { result = $0 }
+        XCTAssertEqual(visibility.requests.count, 2)
+        visibility.succeed(1)
+        XCTAssertEqual(result, .collapsed)
+    }
+
+    func testCancelledInventoryNeverHidesUnobservedApps() {
+        inventory.defersSnapshots = true
+        let engine = makeEngine()
+        var result: CollapseResult?
+        engine.collapse { result = $0 }
+        inventory.pendingSnapshots.removeFirst()(nil)
+        XCTAssertEqual(result, .unavailable)
+        XCTAssertEqual(engine.state, .expanded)
+        XCTAssertTrue(visibility.requests.isEmpty)
+    }
+
+    func testChangingSectionsReleasesCachedRestrictionAndRescans() {
+        let engine = makeEngine()
+        engine.updateAlwaysHiddenSection(enabled: true, separatorHidden: true)
+        let active = visibility.succeed(0)
+        inventory.items = [item("com.new", x: 1400)]
+        let snapshotsBefore = inventory.snapshots
+        engine.updateAlwaysHiddenSection(enabled: false, separatorHidden: false)
+        XCTAssertTrue(active.isInvalidated)
+        engine.collapse { _ in }
+        XCTAssertGreaterThan(inventory.snapshots, snapshotsBefore)
+        XCTAssertEqual(visibility.requests.last?.bundles, ["com.dwarvesv.minimalbar", "com.new"])
+    }
+
+    func testEnablingAlwaysHiddenWhileCollapsedRebuildsSections() {
+        let engine = makeEngine()
+        engine.collapse { _ in }
+        let old = visibility.succeed(0)
+        engine.updateAlwaysHiddenSection(enabled: true, separatorHidden: true)
+        XCTAssertTrue(old.isInvalidated)
+        XCTAssertEqual(engine.state, .expanded)
+        XCTAssertEqual(visibility.requests.count, 2)
+        XCTAssertEqual(visibility.requests.last?.bundles, ["com.dwarvesv.minimalbar", "com.hidden", "com.visible"])
+    }
+
+    func testRearrangementRevealsAlwaysHiddenAndRebuildsMovedSections() {
+        let engine = makeEngine()
+        engine.updateAlwaysHiddenSection(enabled: true, separatorHidden: true)
+        let active = visibility.succeed(0)
+        engine.revealForRearrangement()
+        XCTAssertTrue(active.isInvalidated)
+        inventory.items = [item("com.moved", x: 1400)]
+        engine.expand()
+        XCTAssertEqual(visibility.requests.last?.bundles, ["com.dwarvesv.minimalbar", "com.moved"])
+    }
+
+    func testNativeDividerCanSitOnEitherSideOfArrow() {
+        let engine = NativeVisibilityEngine(items: items, inventory: inventory, visibility: visibility,
+            ownBundleIdentifier: "com.dwarvesv.minimalbar",
+            itemFrame: { [items = self.items!] statusItem in
+                statusItem === items.toggleItem ? CGRect(x: 1200, y: 0, width: 20, height: 24) : separator
+            }, isLTR: { true }, isInteractionActive: { false })
+        XCTAssertTrue(engine.isArrangementValid)
+        engine.collapse { _ in }
+        XCTAssertEqual(visibility.requests.first?.bundles, ["com.dwarvesv.minimalbar", "com.visible"])
+    }
+
+    func testDeferredShortcutSurvivesAsyncRearrangementRecovery() {
+        inventory.defersSnapshots = true
+        let engine = makeEngine()
+        engine.updateAlwaysHiddenSection(enabled: true, separatorHidden: true)
+        let request = DeferredCollapseRequest()
+        request.request()
+        var performed = 0
+        var result: CollapseResult?
+        let action = {
+            performed += 1
+            engine.collapse { result = $0 }
+        }
+        request.performIfReady(isInteractionActive: false, engine: engine, action: action)
+        XCTAssertTrue(request.isPending)
+        inventory.pendingSnapshots.removeFirst()(inventory.items)
+        request.performIfReady(isInteractionActive: false, engine: engine, action: action)
+        XCTAssertTrue(request.isPending)
+        visibility.succeed(0)
+        request.performIfReady(isInteractionActive: false, engine: engine, action: action)
+        XCTAssertFalse(request.isPending)
+        XCTAssertEqual(performed, 1)
+        XCTAssertEqual(visibility.requests.count, 2)
+        if visibility.requests.count == 2 { visibility.succeed(1) }
+        XCTAssertEqual(result, .collapsed)
     }
 
     func testAlwaysHiddenSeparatorFollowsTheSectionSetting() {
@@ -333,5 +518,43 @@ final class LegacyLengthEngineTests: XCTestCase {
         engine.expand()
         XCTAssertEqual(engine.state, .expanded)
         XCTAssertEqual(items.separatorItem.length, 20)
+    }
+}
+
+final class AccessibilityMenuBarInventoryTests: XCTestCase {
+    func testNoMenuBarIsNotAReadFailure() {
+        let result = AccessibilityMenuBarInventory.statusItems(
+            of: [(pid: getpid(), bundleIdentifier: "com.app")], isInteractionActive: { false },
+            read: { _, _ in (.attributeUnsupported, nil) })
+        XCTAssertEqual(result, [])
+    }
+
+    func testTimeoutDoesNotProducePartialInventory() {
+        let result = AccessibilityMenuBarInventory.statusItems(
+            of: [(pid: getpid(), bundleIdentifier: "com.app")], isInteractionActive: { false },
+            read: { _, _ in (.cannotComplete, nil) })
+        XCTAssertNil(result)
+    }
+
+    func testUnreadableMenuChildrenCancelInventory() {
+        let bar = AXUIElementCreateApplication(getpid())
+        let result = AccessibilityMenuBarInventory.statusItems(
+            of: [(pid: getpid(), bundleIdentifier: "com.app")], isInteractionActive: { false },
+            read: { _, key in key as String == "AXExtrasMenuBar" ? (.success, bar) : (.cannotComplete, nil) })
+        XCTAssertNil(result)
+    }
+
+    func testUnreadableSiblingPositionCancelsInventory() {
+        let child = AXUIElementCreateApplication(getpid())
+        let result = AccessibilityMenuBarInventory.statusItems(
+            of: [(pid: getpid(), bundleIdentifier: "com.app")], isInteractionActive: { false },
+            read: { _, key in
+                switch key as String {
+                case "AXExtrasMenuBar": return (.success, child)
+                case kAXChildrenAttribute: return (.success, [child] as CFArray)
+                default: return (.cannotComplete, nil)
+                }
+            })
+        XCTAssertNil(result)
     }
 }

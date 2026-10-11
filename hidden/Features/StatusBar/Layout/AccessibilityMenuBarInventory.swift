@@ -33,7 +33,7 @@ final class AccessibilityMenuBarInventory: MenuBarInventoryProviding {
 
     // Accessibility round-trips to every app take about a second in total, so the
     // walk runs off the main thread.
-    func snapshot(completion: @escaping ([MenuBarInventoryItem]) -> Void) {
+    func snapshot(completion: @escaping ([MenuBarInventoryItem]?) -> Void) {
         // Only app bundles own status items. Skipping the rest (dozens of WebKit
         // and XPC helpers, each of which would sit out the timeout) cuts the walk
         // from ~2.8s to ~1s.
@@ -47,21 +47,44 @@ final class AccessibilityMenuBarInventory: MenuBarInventoryProviding {
         }
     }
 
-    private static func statusItems(of apps: [(pid: pid_t, bundleIdentifier: String?)]) -> [MenuBarInventoryItem] {
+    typealias AttributeReader = (AXUIElement, CFString) -> (AXError, CFTypeRef?)
+
+    private static func readAttribute(_ element: AXUIElement, _ attribute: CFString) -> (AXError, CFTypeRef?) {
+        var value: CFTypeRef?
+        let result = AXUIElementCopyAttributeValue(element, attribute, &value)
+        return (result, value)
+    }
+
+    static func statusItems(of apps: [(pid: pid_t, bundleIdentifier: String?)],
+                            isInteractionActive: () -> Bool = {
+                                CGEventSource.flagsState(.combinedSessionState).contains(.maskCommand) ||
+                                    CGEventSource.buttonState(.combinedSessionState, button: .left)
+                            },
+                            read: AttributeReader = AccessibilityMenuBarInventory.readAttribute) -> [MenuBarInventoryItem]? {
         var items: [MenuBarInventoryItem] = []
         for app in apps {
+            // Stop querying AX while macOS handles Command-drag rearrangement.
+            // Use session input state here because this walk is off the main thread.
+            guard !isInteractionActive() else { return nil }
             let element = AXUIElementCreateApplication(app.pid)
             // The default timeout is several seconds per app, and one busy or hung
             // app then stalls the collapse (measured: ~18s on a normal session).
             AXUIElementSetMessagingTimeout(element, messagingTimeout)
-            var barValue: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(element, "AXExtrasMenuBar" as CFString, &barValue) == .success,
-                  let bar = barValue else { continue }
-            var childrenValue: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(bar as! AXUIElement, kAXChildrenAttribute as CFString, &childrenValue) == .success,
-                  let children = childrenValue as? [AXUIElement] else { continue }
+            let (barResult, barValue) = read(element, "AXExtrasMenuBar" as CFString)
+            if barResult == .attributeUnsupported || barResult == .noValue { continue }
+            if barResult != .success { NSLog("MenuBarInventory: extras read failed for \(app.bundleIdentifier ?? "unknown"), AX error \(barResult.rawValue)") }
+            guard barResult == .success,
+                  let bar = barValue, CFGetTypeID(bar) == AXUIElementGetTypeID() else { return nil }
+            let (childrenResult, childrenValue) = read(bar as! AXUIElement, kAXChildrenAttribute as CFString)
+            if childrenResult != .success { NSLog("MenuBarInventory: children read failed for \(app.bundleIdentifier ?? "unknown"), AX error \(childrenResult.rawValue)") }
+            guard childrenResult == .success,
+                  let children = childrenValue as? [AXUIElement] else { return nil }
             for child in children {
-                guard let frame = frame(of: child) else { continue }
+                guard !isInteractionActive() else { return nil }
+                guard let frame = frame(of: child, read: read), app.bundleIdentifier != nil else {
+                    NSLog("MenuBarInventory: item position unavailable for \(app.bundleIdentifier ?? "unknown")")
+                    return nil
+                }
                 items.append(MenuBarInventoryItem(bundleIdentifier: app.bundleIdentifier, frame: frame))
             }
         }
@@ -70,15 +93,19 @@ final class AccessibilityMenuBarInventory: MenuBarInventoryProviding {
 
     // Accessibility frames use a top-left origin, AppKit's bottom-left. Only the
     // horizontal position matters for sections, and x is the same in both.
-    private static func frame(of element: AXUIElement) -> CGRect? {
-        var positionValue: CFTypeRef?
-        var sizeValue: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue) == .success,
-              AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success else { return nil }
+    private static func frame(of element: AXUIElement, read: AttributeReader) -> CGRect? {
+        let (positionResult, positionValue) = read(element, kAXPositionAttribute as CFString)
+        let (sizeResult, sizeValue) = read(element, kAXSizeAttribute as CFString)
+        guard positionResult == .success, sizeResult == .success,
+              let positionValue = positionValue, let sizeValue = sizeValue,
+              CFGetTypeID(positionValue) == AXValueGetTypeID(),
+              CFGetTypeID(sizeValue) == AXValueGetTypeID() else { return nil }
         var position = CGPoint.zero
         var size = CGSize.zero
-        AXValueGetValue(positionValue as! AXValue, .cgPoint, &position)
-        AXValueGetValue(sizeValue as! AXValue, .cgSize, &size)
+        guard AXValueGetValue(positionValue as! AXValue, .cgPoint, &position),
+              AXValueGetValue(sizeValue as! AXValue, .cgSize, &size),
+              position.x.isFinite, position.y.isFinite, size.width.isFinite,
+              size.height.isFinite, size.width > 0, size.height > 0 else { return nil }
         return CGRect(origin: position, size: size)
     }
 }

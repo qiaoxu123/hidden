@@ -27,10 +27,26 @@ Both must exit 0 with **no** `MACOSX_DEPLOYMENT_TARGET` override; the floor is
 13.0 in the project file. The single expected warning is the deliberately
 deprecated `SMLoginItemSetEnabled(false)` call that cleans up legacy installs.
 
-## Behavioral verification (no test target exists; this is the methodology)
+## Verification
 
-The repo has no unit-test infrastructure; behavior is verified against the real
-menu bar. Two building blocks make that scriptable:
+Run the test suite before a local Direct build:
+
+```sh
+xcodebuild -project 'Hidden Bar.xcodeproj' -scheme 'Hidden Bar' \
+  -configuration Debug-Direct -destination 'platform=macOS' \
+  CODE_SIGN_IDENTITY=- DEVELOPMENT_TEAM= test
+```
+
+The unit tests cover native layout, cancelled/uncertain inventories, activation
+races, and deferred shortcut requests. They do not measure drag frame rates or
+prove that macOS physically hid an icon. Launch the installed app normally via
+Launch Services and check its own Accessibility authorization; directly running
+the binary from a trusted development tool can have different authorization.
+
+### Behavioral verification
+
+Behavior must also be verified against the real menu bar. For the legacy engine,
+two building blocks make that scriptable:
 
 1. **Truth signal**: the separator's AX size.
    `osascript -e 'tell application "System Events" to tell process "Hidden Bar" to get size of menu bar item 2 of menu bar 2'`

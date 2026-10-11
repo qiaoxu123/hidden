@@ -27,3 +27,8 @@ Steps to enable:
 Steps to view always hidden icons:
 1. You right-click on “<” icon again to view and repeat the action to enable the feature. Enjoy 😉!
 ";
+
+"Command-drag this divider to choose which icons are hidden" = "Command-drag this divider to choose which icons are hidden";
+"Hidden area divider" = "Hidden area divider";
+"Collapse hidden menu bar icons" = "Collapse hidden menu bar icons";
+"Expand hidden menu bar icons" = "Expand hidden menu bar icons";
