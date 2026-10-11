@@ -65,3 +65,11 @@ final class MenuBarToggleActionTests: XCTestCase {
             commandPressed: true, leftMousePressed: false, hasDeferredCollapse: true), .cancelDeferredCollapse)
     }
 }
+
+final class BusyMenuBarToggleTests: XCTestCase {
+    func testArrowClickQueuesWhileExpandedLayoutIsBusy() {
+        XCTAssertEqual(MenuBarToggleActionResolver.action(state: .expanded, isShortcut: false,
+            commandPressed: false, leftMousePressed: false, hasDeferredCollapse: false,
+            engineBusy: true), .deferCollapse)
+    }
+}

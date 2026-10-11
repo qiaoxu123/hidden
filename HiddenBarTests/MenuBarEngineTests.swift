@@ -378,6 +378,38 @@ final class NativeVisibilityEngineTests: XCTestCase {
         XCTAssertEqual(result, .collapsed)
     }
 
+    func testPermissionFailureIsActionableAndClearsAfterGrant() {
+        inventory.isAuthorized = false
+        let engine = makeEngine()
+        XCTAssertEqual(engine.failureReason, .accessibilityPermission)
+        engine.collapse { _ in }
+        XCTAssertEqual(engine.failureReason, .accessibilityPermission)
+        inventory.isAuthorized = true
+        XCTAssertNil(engine.failureReason)
+    }
+
+    func testUnavailableAPIHasDistinctFailureReason() {
+        visibility.isAvailable = false
+        let engine = makeEngine()
+        engine.collapse { _ in }
+        XCTAssertEqual(engine.failureReason, .unavailableAPI)
+    }
+
+    func testFailedInventoryExplainsUnchangedArrow() {
+        inventory.defersSnapshots = true
+        let engine = makeEngine()
+        engine.collapse { _ in }
+        inventory.pendingSnapshots.removeFirst()(nil)
+        XCTAssertEqual(engine.failureReason, .layoutUnavailable)
+    }
+
+    func testActivationFailureExplainsUnchangedArrow() {
+        let engine = makeEngine()
+        engine.collapse { _ in }
+        visibility.fail(0)
+        XCTAssertEqual(engine.failureReason, .activationFailed)
+    }
+
     func testAlwaysHiddenSeparatorFollowsTheSectionSetting() {
         let engine = makeEngine()
         engine.updateAlwaysHiddenSection(enabled: false, separatorHidden: false)

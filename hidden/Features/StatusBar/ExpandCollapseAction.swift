@@ -39,10 +39,10 @@ enum MenuBarToggleAction {
 enum MenuBarToggleActionResolver {
     static func action(state: MenuBarEngineState, isShortcut: Bool,
                        commandPressed: Bool, leftMousePressed: Bool,
-                       hasDeferredCollapse: Bool) -> MenuBarToggleAction {
+                       hasDeferredCollapse: Bool, engineBusy: Bool = false) -> MenuBarToggleAction {
         guard !leftMousePressed, isShortcut || !commandPressed else { return .ignore }
         if hasDeferredCollapse { return .cancelDeferredCollapse }
         if state == .collapsed || state == .calibrating { return .expand }
-        return isShortcut && commandPressed ? .deferCollapse : .collapse
+        return engineBusy || (isShortcut && commandPressed) ? .deferCollapse : .collapse
     }
 }

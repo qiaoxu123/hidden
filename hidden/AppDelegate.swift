@@ -27,6 +27,10 @@ class AppDelegate: NSObject, NSApplicationDelegate{
     }
 
     func applicationDidFinishLaunching(_ aNotification: Notification) {
+        // Hosted unit tests inspect model/default behavior, not the real menu
+        // bar. Avoid privacy prompts and login-item changes in those hosts.
+        if NSClassFromString("XCTestCase") != nil ||
+            ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil { return }
         guard ensureSingleInstance() else { return }
         registerDefaultValues()
         detectLTRLang()
@@ -34,6 +38,12 @@ class AppDelegate: NSObject, NSApplicationDelegate{
         setupAutoStartApp()
         setupHotKey()
         openPreferencesIfNeeded()
+        // Test hosts must not enter a modal onboarding loop during teardown.
+        #if !DEBUG
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil {
+            DispatchQueue.main.async { [weak self] in self?.statusBarController.showPermissionHelpIfNeeded() }
+        }
+        #endif
     }
 
     /// Hidden Bar is a menu bar utility with no visible window, so launching it a

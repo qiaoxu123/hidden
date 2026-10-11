@@ -52,6 +52,7 @@ class StatusBarController: MenuBarItemProvider {
     private var shortcutCollapseTimer: Timer?
     private let deferredCollapse = DeferredCollapseRequest()
     private var loggedInvalidArrangement = false
+    private var isPresentingFailure = false
 
     // True while the pointer sits in any screen's menubar band (the strip between
     // visibleFrame.maxY and frame.maxY, which is the menubar's exact height there).
@@ -228,7 +229,9 @@ class StatusBarController: MenuBarItemProvider {
         // so VoiceOver can operate the bar.
         switch ExpandCollapseActionResolver.action(eventType: event?.type, optionPressed: event?.modifierFlags.contains(.option) ?? false) {
         case .toggle:
-            self.expandCollapseIfNeeded()
+            // AppKit can still report the button as pressed inside mouse-up.
+            // Evaluate drag guards after this event has finished dispatching.
+            DispatchQueue.main.async { [weak self] in self?.expandCollapseIfNeeded() }
         case .contextMenu:
             // Right-click opens the same context menu the separator has (#356),
             // making settings reachable from the control everyone clicks.
@@ -302,7 +305,7 @@ class StatusBarController: MenuBarItemProvider {
         let commandPressed = NSEvent.modifierFlags.contains(.command)
         let action = MenuBarToggleActionResolver.action(state: menuBarEngine.state, isShortcut: isShortcut,
             commandPressed: commandPressed, leftMousePressed: NSEvent.pressedMouseButtons & 1 != 0,
-            hasDeferredCollapse: deferredCollapse.isPending)
+            hasDeferredCollapse: deferredCollapse.isPending, engineBusy: menuBarEngine.isBusy)
         guard action != .ignore else { return }
         //prevented rapid click cause icon show many in Dock
         if isToggle {return}
@@ -312,7 +315,7 @@ class StatusBarController: MenuBarItemProvider {
             expandMenubar()
             if isShortcut && commandPressed && menuBarEngine is NativeVisibilityEngine { beginRearrangement() }
         case .collapse:
-            collapseMenuBar()
+            collapseMenuBar(userInitiated: true)
         case .deferCollapse:
             timer?.invalidate()
             deferredCollapse.request()
@@ -323,7 +326,7 @@ class StatusBarController: MenuBarItemProvider {
                 self.deferredCollapse.performIfReady(isInteractionActive: interactionActive, engine: self.menuBarEngine) {
                     timer.invalidate()
                     self.shortcutCollapseTimer = nil
-                    self.collapseMenuBar()
+                    self.collapseMenuBar(userInitiated: true)
                 }
             }
         case .cancelDeferredCollapse:
@@ -339,12 +342,19 @@ class StatusBarController: MenuBarItemProvider {
         }
     }
     
-    private func collapseMenuBar() {
+    private func collapseMenuBar(userInitiated: Bool = false) {
+        guard !isPresentingFailure else { return }
+        if userInitiated, let reason = menuBarEngine.failureReason,
+           reason == .accessibilityPermission || reason == .unavailableAPI {
+            presentHidingFailure(reason)
+            return
+        }
         guard !rearrangementActive, !NSEvent.modifierFlags.contains(.command), NSEvent.pressedMouseButtons & 1 == 0 else {
             autoCollapseIfNeeded()
             return
         }
         guard menuBarEngine.isArrangementValid && !self.isCollapsed else {
+            if userInitiated && !menuBarEngine.isArrangementValid { presentHidingFailure(.layoutUnavailable) }
             if !menuBarEngine.isArrangementValid && !loggedInvalidArrangement {
                 loggedInvalidArrangement = true
                 NSLog("MenuBar: move the divider to the hidden side of the arrow; divider=\(String(describing: btnSeparate.button?.window?.frame)), arrow=\(String(describing: btnExpandCollapse.button?.window?.frame))")
@@ -361,7 +371,50 @@ class StatusBarController: MenuBarItemProvider {
                 self.didCollapseMenuBar()
             case .unavailable:
                 self.didFailToCollapseMenuBar()
+                if userInitiated && !self.rearrangementActive &&
+                    !NSEvent.modifierFlags.contains(.command) && NSEvent.pressedMouseButtons & 1 == 0 {
+                    self.presentHidingFailure(self.menuBarEngine.failureReason ?? .layoutUnavailable)
+                }
             }
+        }
+    }
+
+    func showPermissionHelpIfNeeded() {
+        guard menuBarEngine.failureReason == .accessibilityPermission else { return }
+        presentHidingFailure(.accessibilityPermission)
+    }
+
+    private func presentHidingFailure(_ reason: MenuBarFailureReason) {
+        guard !isPresentingFailure else { return }
+        isPresentingFailure = true
+        timer?.invalidate()
+        defer {
+            isPresentingFailure = false
+            autoCollapseIfNeeded()
+        }
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        if reason == .accessibilityPermission {
+            alert.messageText = "Hidden Bar needs permission".localized
+            let location = ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 27
+                ? "Privacy & Security → Device Control and Data Access".localized
+                : "Privacy & Security → Accessibility".localized
+            alert.informativeText = String(format: "Permission help message".localized, location)
+            alert.addButton(withTitle: "Open System Settings".localized)
+            alert.addButton(withTitle: "Later".localized)
+        } else {
+            alert.messageText = "Hidden Bar could not collapse the menu bar".localized
+            alert.informativeText = reason == .unavailableAPI
+                ? "Native hiding unavailable message".localized
+                : "Menu bar layout unavailable message".localized
+            alert.addButton(withTitle: "OK".localized)
+        }
+        NSLog("MenuBar: presenting user feedback for \(reason)")
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        if reason == .accessibilityPermission && response == .alertFirstButtonReturn,
+           let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
+            NSWorkspace.shared.open(url)
         }
     }
 

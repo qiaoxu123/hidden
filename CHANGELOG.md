@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.11.3] - 2026-10-12
+
+### Features
+- Show actionable permission help at startup and after an explicit arrow click, including an Open System Settings button and the macOS 27 permission-page name.
+
+### Design Rationale
+- Automatic retries stay quiet; explicit failed toggles explain why the menu bar stays expanded. Handle mouse-up toggles on the next run-loop turn so a released button is not mistaken for a drag.
+
+### Notes & Caveats
+- The user must grant the system privacy permission. A newly signed local build may require the permission entry to be re-added.
+- Other hiding failures show a retry explanation; logs retain technical diagnostics.
+
 ## [1.11.2] - 2026-10-11
 
 ### Features

@@ -14,6 +14,7 @@ import AppKit
 protocol MenuBarEngine: AnyObject {
     var state: MenuBarEngineState { get }
     var isBusy: Bool { get }
+    var failureReason: MenuBarFailureReason? { get }
 
     func collapse(completion: @escaping (CollapseResult) -> Void)
     func expand()
@@ -35,8 +36,13 @@ protocol MenuBarEngine: AnyObject {
 }
 
 extension MenuBarEngine {
+    var failureReason: MenuBarFailureReason? { nil }
     var isBusy: Bool { state == .calibrating }
     func revealForRearrangement() { expand() }
+}
+
+enum MenuBarFailureReason {
+    case accessibilityPermission, unavailableAPI, layoutUnavailable, activationFailed
 }
 
 // Keep explicit shortcut intent until asynchronous layout recovery is ready.

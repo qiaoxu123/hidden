@@ -32,3 +32,14 @@ Steps to view always hidden icons:
 "Hidden area divider" = "Hidden area divider";
 "Collapse hidden menu bar icons" = "Collapse hidden menu bar icons";
 "Expand hidden menu bar icons" = "Expand hidden menu bar icons";
+
+"Hidden Bar needs permission" = "Hidden Bar needs permission";
+"Privacy & Security → Device Control and Data Access" = "Privacy & Security → Device Control and Data Access";
+"Privacy & Security → Accessibility" = "Privacy & Security → Accessibility";
+"Permission help message" = "To read menu bar icon positions and hide the correct icons, open System Settings → %@ and enable Hidden Bar.app from /Applications. If an older copy is listed, remove it and add the installed copy. Return here and click the arrow again after granting permission. Hidden Bar will stay expanded until permission is granted.";
+"Open System Settings" = "Open System Settings";
+"Later" = "Later";
+"Hidden Bar could not collapse the menu bar" = "Hidden Bar could not collapse the menu bar";
+"Native hiding unavailable message" = "This build or macOS version does not support native hiding. Use the Direct build on macOS 27.";
+"Menu bar layout unavailable message" = "Icon positions could not be read, or macOS could not apply hiding. Finish any icon dragging, make sure the divider is visible, then try again. On older macOS versions, keep the divider on the hidden side of the arrow.";
+"OK" = "OK";

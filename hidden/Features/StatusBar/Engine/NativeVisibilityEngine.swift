@@ -58,6 +58,13 @@ final class NativeVisibilityEngine: MenuBarEngine {
     private var layoutPending = false
     var isBusy: Bool { layoutPending || activationPending || state == .calibrating }
     private var lastUnavailableReason: String?
+    private var lastFailure: MenuBarFailureReason?
+
+    var failureReason: MenuBarFailureReason? {
+        if !visibility.isAvailable { return .unavailableAPI }
+        if !inventory.isAuthorized { return .accessibilityPermission }
+        return lastFailure
+    }
 
     private var alwaysHiddenEnabled = false
     private var alwaysHiddenSeparatorHidden = false
@@ -96,6 +103,7 @@ final class NativeVisibilityEngine: MenuBarEngine {
         guard !isInteractionActive(), !activationPending, !layoutPending else {
             return completion(.unavailable)
         }
+        lastFailure = nil
         setSeparatorsVisible(true)
 
         guard visibility.isAvailable else {
@@ -115,6 +123,7 @@ final class NativeVisibilityEngine: MenuBarEngine {
         withLayout { [weak self] layout in
             guard let self = self else { return }
             guard let layout = layout else {
+                self.lastFailure = .layoutUnavailable
                 self.logUnavailableOnce("layout reading was deferred or the divider is not ready")
                 self.state = .expanded
                 return completion(.unavailable)
@@ -244,11 +253,13 @@ final class NativeVisibilityEngine: MenuBarEngine {
                     return completion(false)
                 }
                 let old = self.assertion
+                self.lastFailure = nil
                 self.assertion = newAssertion
                 old?.invalidate()
                 NSLog("NativeVisibility: restriction active for \(allowed.count) allowed apps")
                 completion(true)
             case .failure(let error):
+                self.lastFailure = .activationFailed
                 // Fail open: never leave icons hidden after an error.
                 NSLog("NativeVisibility: activation failed: \(error.localizedDescription)")
                 self.releaseAssertion()

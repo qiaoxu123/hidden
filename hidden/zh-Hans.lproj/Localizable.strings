@@ -28,3 +28,14 @@
 "Hidden area divider" = "隐藏区域分界线";
 "Collapse hidden menu bar icons" = "折叠菜单栏隐藏区域";
 "Expand hidden menu bar icons" = "展开菜单栏隐藏区域";
+
+"Hidden Bar needs permission" = "Hidden Bar 需要系统权限";
+"Privacy & Security → Device Control and Data Access" = "隐私与安全 → 设备控制和数据访问";
+"Privacy & Security → Accessibility" = "隐私与安全 → 辅助功能";
+"Permission help message" = "读取菜单栏图标的位置需要系统授权。请打开「系统设置 → %@」，开启 /Applications 中的 Hidden Bar.app。如果列表中是旧副本，请移除旧项后添加当前安装的应用。授权后回来再次点击箭头即可。未授权期间，菜单栏会保持展开。";
+"Open System Settings" = "打开系统设置";
+"Later" = "稍后";
+"Hidden Bar could not collapse the menu bar" = "暂时无法折叠菜单栏";
+"Native hiding unavailable message" = "当前构建或 macOS 版本不支持原生折叠。macOS 27 请使用 Direct 版本。";
+"Menu bar layout unavailable message" = "未能读取图标位置，或系统未能应用折叠。请先结束图标拖拽，确认分界线可见，再次点击箭头。旧版 macOS 还需要将分界线放在箭头的隐藏侧。";
+"OK" = "好";
