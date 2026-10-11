@@ -1,5 +1,17 @@
 # Changelog
 
+## [Unreleased] - 2026-10-11
+
+### Features
+- Added `scripts/build-local-direct.sh` to build and ad-hoc sign a local Direct app, with checks for App Sandbox and the native macOS 27 engine.
+
+### Design Rationale
+- Reuse the upstream native engine. A sandboxed v1.11 install on macOS 27.0.1 cannot use it; explicitly selecting `Release-Direct` avoids reproducing that build configuration mistake.
+
+### Notes & Caveats
+- Local builds are not notarized. Run from `/Applications` and allow Accessibility. Native hiding uses a private framework and applies per app.
+- The legacy installed app can be retained for rollback. Sandboxed preferences may need to be reconfigured in the Direct app.
+
 ## v1.11.1 (2026-09-18)
 
 ### Fixed

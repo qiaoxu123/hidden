@@ -4,6 +4,15 @@ Build, verify, and release Hidden Bar. Assumes current Xcode on macOS 13+.
 
 ## Build
 
+For a runnable local build on macOS 27, run `zsh scripts/build-local-direct.sh`.
+It explicitly selects `Release-Direct`, ad-hoc signs the app, and rejects a
+sandboxed binary or one missing the native visibility engine. The output is
+`build/Build/Products/Release-Direct/Hidden Bar.app`. Quit the installed copy,
+back it up, and copy the output to `/Applications` before launching it. Enable
+Accessibility in System Settings for the new copy. This is a local development
+build, not a notarized distribution. `Debug` and `Release` explicitly select
+the App Store configuration and cannot hide icons on macOS 27.
+
 ```sh
 # CI-style build, no signing required
 xcodebuild -project 'Hidden Bar.xcodeproj' -scheme 'Hidden Bar' \
