@@ -28,6 +28,7 @@ enum MenuBarSection: Int, Comparable {
 struct MenuBarInventoryItem: Equatable {
     let bundleIdentifier: String?
     let frame: CGRect
+    var mustKeepVisible = false
 }
 
 protocol MenuBarInventoryProviding: AnyObject {
@@ -65,7 +66,7 @@ enum MenuBarLayoutResolver {
             guard let bundle = item.bundleIdentifier,
                   bundle != ownBundle,
                   !systemItemOwners.contains(bundle) else { continue }
-            let section = self.section(of: item.frame,
+            let section = item.mustKeepVisible ? .visible : self.section(of: item.frame,
                                        separatorFrame: separatorFrame,
                                        alwaysHiddenSeparatorFrame: alwaysHiddenSeparatorFrame,
                                        isLTR: isLTR)

@@ -13,6 +13,14 @@ Accessibility in System Settings for the new copy. This is a local development
 build, not a notarized distribution. `Debug` and `Release` explicitly select
 the App Store configuration and cannot hide icons on macOS 27.
 
+Ad-hoc builds have a different code hash after rebuilding. On macOS 27.0.1,
+an existing enabled permission row can retain the previous code requirement;
+turning it off and on does not necessarily replace that requirement. If `tccd`
+logs `Failed to match existing code requirement`, remove the old Hidden Bar
+entry and add `/Applications/Hidden Bar.app` again. Keep that binary unchanged
+while verifying authorization. The permission is named “Device Control and
+Data Access” on macOS 27.
+
 ```sh
 # CI-style build, no signing required
 xcodebuild -project 'Hidden Bar.xcodeproj' -scheme 'Hidden Bar' \

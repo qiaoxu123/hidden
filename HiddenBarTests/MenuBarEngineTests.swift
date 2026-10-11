@@ -152,6 +152,16 @@ final class MenuBarLayoutResolverTests: XCTestCase {
         XCTAssertEqual(layout.sections, ["com.app": .hidden])
     }
 
+    func testUnreadableAppStaysVisibleDespiteHiddenSibling() {
+        let layout = MenuBarLayoutResolver.resolve(
+            inventory: [item("com.uncertain", x: 900),
+                MenuBarInventoryItem(bundleIdentifier: "com.uncertain", frame: .null, mustKeepVisible: true),
+                item("com.known", x: 1100)],
+            separatorFrame: separator, alwaysHiddenSeparatorFrame: nil,
+            isLTR: true, excludingBundle: nil)
+        XCTAssertEqual(layout.sections, ["com.uncertain": .visible, "com.known": .hidden])
+    }
+
     func testBundlesAreFilteredAndSorted() {
         let layout = MenuBarLayout(sections: ["b": .visible, "a": .visible, "c": .hidden, "d": .alwaysHidden])
         XCTAssertEqual(layout.bundles(in: [.visible]), ["a", "b"])
@@ -561,22 +571,30 @@ final class AccessibilityMenuBarInventoryTests: XCTestCase {
         XCTAssertEqual(result, [])
     }
 
-    func testTimeoutDoesNotProducePartialInventory() {
+    func testTimeoutKeepsUncertainAppVisible() {
         let result = AccessibilityMenuBarInventory.statusItems(
             of: [(pid: getpid(), bundleIdentifier: "com.app")], isInteractionActive: { false },
             read: { _, _ in (.cannotComplete, nil) })
-        XCTAssertNil(result)
+        XCTAssertNotNil(result)
+        let layout = MenuBarLayoutResolver.resolve(inventory: result ?? [],
+            separatorFrame: separator, alwaysHiddenSeparatorFrame: nil,
+            isLTR: true, excludingBundle: nil)
+        XCTAssertEqual(layout.sections["com.app"], .visible)
     }
 
-    func testUnreadableMenuChildrenCancelInventory() {
+    func testUnreadableMenuChildrenKeepAppVisible() {
         let bar = AXUIElementCreateApplication(getpid())
         let result = AccessibilityMenuBarInventory.statusItems(
             of: [(pid: getpid(), bundleIdentifier: "com.app")], isInteractionActive: { false },
             read: { _, key in key as String == "AXExtrasMenuBar" ? (.success, bar) : (.cannotComplete, nil) })
-        XCTAssertNil(result)
+        XCTAssertNotNil(result)
+        let layout = MenuBarLayoutResolver.resolve(inventory: result ?? [],
+            separatorFrame: separator, alwaysHiddenSeparatorFrame: nil,
+            isLTR: true, excludingBundle: nil)
+        XCTAssertEqual(layout.sections["com.app"], .visible)
     }
 
-    func testUnreadableSiblingPositionCancelsInventory() {
+    func testUnreadableSiblingPositionKeepsAppVisible() {
         let child = AXUIElementCreateApplication(getpid())
         let result = AccessibilityMenuBarInventory.statusItems(
             of: [(pid: getpid(), bundleIdentifier: "com.app")], isInteractionActive: { false },
@@ -587,6 +605,10 @@ final class AccessibilityMenuBarInventoryTests: XCTestCase {
                 default: return (.cannotComplete, nil)
                 }
             })
-        XCTAssertNil(result)
+        XCTAssertNotNil(result)
+        let layout = MenuBarLayoutResolver.resolve(inventory: result ?? [],
+            separatorFrame: separator, alwaysHiddenSeparatorFrame: nil,
+            isLTR: true, excludingBundle: nil)
+        XCTAssertEqual(layout.sections["com.app"], .visible)
     }
 }

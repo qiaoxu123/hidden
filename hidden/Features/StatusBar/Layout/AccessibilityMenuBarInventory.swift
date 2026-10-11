@@ -74,16 +74,26 @@ final class AccessibilityMenuBarInventory: MenuBarInventoryProviding {
             if barResult == .attributeUnsupported || barResult == .noValue { continue }
             if barResult != .success { NSLog("MenuBarInventory: extras read failed for \(app.bundleIdentifier ?? "unknown"), AX error \(barResult.rawValue)") }
             guard barResult == .success,
-                  let bar = barValue, CFGetTypeID(bar) == AXUIElementGetTypeID() else { return nil }
+                  let bar = barValue, CFGetTypeID(bar) == AXUIElementGetTypeID() else {
+                guard let bundle = app.bundleIdentifier else { return nil }
+                items.append(MenuBarInventoryItem(bundleIdentifier: bundle, frame: .null, mustKeepVisible: true))
+                continue
+            }
             let (childrenResult, childrenValue) = read(bar as! AXUIElement, kAXChildrenAttribute as CFString)
             if childrenResult != .success { NSLog("MenuBarInventory: children read failed for \(app.bundleIdentifier ?? "unknown"), AX error \(childrenResult.rawValue)") }
             guard childrenResult == .success,
-                  let children = childrenValue as? [AXUIElement] else { return nil }
+                  let children = childrenValue as? [AXUIElement] else {
+                guard let bundle = app.bundleIdentifier else { return nil }
+                items.append(MenuBarInventoryItem(bundleIdentifier: bundle, frame: .null, mustKeepVisible: true))
+                continue
+            }
             for child in children {
                 guard !isInteractionActive() else { return nil }
                 guard let frame = frame(of: child, read: read), app.bundleIdentifier != nil else {
                     NSLog("MenuBarInventory: item position unavailable for \(app.bundleIdentifier ?? "unknown")")
-                    return nil
+                    guard let bundle = app.bundleIdentifier else { return nil }
+                    items.append(MenuBarInventoryItem(bundleIdentifier: bundle, frame: .null, mustKeepVisible: true))
+                    break
                 }
                 items.append(MenuBarInventoryItem(bundleIdentifier: app.bundleIdentifier, frame: frame))
             }

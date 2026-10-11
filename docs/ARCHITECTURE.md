@@ -73,7 +73,8 @@ flowchart TD
   sections independently of the arrow. Command-drag temporarily releases the
   always-hidden assertion, then reads a settled, unrestricted layout. A pending
   shortcut collapse survives layout/activation work through
-  `DeferredCollapseRequest`; uncertain AX inventories fail open.
+  `DeferredCollapseRequest`; unreadable identified apps remain visible, and
+  cancelled or unidentifiable inventories leave the whole bar expanded.
 - **`Preferences`** (facade enum): typed accessors over `UserDefaults`; setters
   post `NotificationCenter` notifications that the controller and prefs window
   observe. There is no other state store.
@@ -115,7 +116,7 @@ A full-tree audit (2026-06) scored 9/10 with hygiene-level findings only.
 - **macOS 27**: the menu bar re-architecture breaks length-inflation hiding
   (issue #360). The Direct engine uses a private native framework, which may
   change in future macOS updates. Native hiding applies per app; uncertain AX
-  reads keep the bar expanded rather than hiding the wrong apps.
+  reads keep the affected app visible rather than hiding it by guesswork.
 - **Other apps' open menus**: interaction-awareness is pointer-position-based;
   a pointer deep inside another app's open dropdown is below the menubar band,
   so the collapse can still fire there.

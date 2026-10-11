@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.11.4] - 2026-10-12
+
+### Features
+- A menu-bar app that cannot be read stays visible without preventing known apps from collapsing.
+
+### Design Rationale
+- Verified on macOS 27.0.1: `com.apple.UIKitSystemApp` returns AX error -25204, previously aborting the entire inventory. Retain that bundle in the visible allow-list instead of guessing its position or blocking all hiding.
+
+### Notes & Caveats
+- A visible fallback wins over readable hidden siblings from the same bundle. Cancelled walks and failures without an identifiable bundle still leave the whole bar expanded.
+
 ## [1.11.3] - 2026-10-12
 
 ### Features
