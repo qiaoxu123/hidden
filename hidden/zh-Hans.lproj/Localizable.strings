@@ -39,3 +39,5 @@
 "Native hiding unavailable message" = "当前构建或 macOS 版本不支持原生折叠。macOS 27 请使用 Direct 版本。";
 "Menu bar layout unavailable message" = "未能读取图标位置，或系统未能应用折叠。请先结束图标拖拽，确认分界线可见，再次点击箭头。旧版 macOS 还需要将分界线放在箭头的隐藏侧。";
 "OK" = "好";
+
+"Menu bar separator; drag the arrow to choose hidden icons" = "菜单栏分隔线；按住 Command 拖动箭头来选择隐藏区域";

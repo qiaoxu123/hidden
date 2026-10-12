@@ -205,7 +205,9 @@ class StatusBarController: MenuBarItemProvider {
             button.target = self
             button.action = #selector(self.showContextMenuFromSeparator(sender:))
             button.sendAction(on: [.leftMouseUp, .rightMouseUp])
-            button.toolTip = "Command-drag this divider to choose which icons are hidden".localized
+            button.toolTip = menuBarEngine is NativeVisibilityEngine
+                ? "Menu bar separator; drag the arrow to choose hidden icons".localized
+                : "Command-drag this divider to choose which icons are hidden".localized
             button.setAccessibilityLabel("Hidden area divider".localized)
         }
 

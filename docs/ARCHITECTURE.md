@@ -69,8 +69,8 @@ flowchart TD
   `MenuBarEngineFactory` is the one place that picks an engine for the running
   OS: Direct builds select `NativeVisibilityEngine` on macOS 27+, and other
   configurations use `LegacyLengthEngine`.
-- **Native interaction**: the `|` divider remains fixed-width and defines the
-  sections independently of the arrow. Command-drag temporarily releases the
+- **Native interaction**: the arrow defines the hiding boundary; the ordinary
+  `|` remains visible at fixed width. Command-drag temporarily releases the
   always-hidden assertion, then reads a settled, unrestricted layout. A pending
   shortcut collapse survives layout/activation work through
   `DeferredCollapseRequest`; unreadable identified apps remain visible, and

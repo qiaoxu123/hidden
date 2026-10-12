@@ -14,8 +14,8 @@ import AppKit
 // assessment mode. macOS then hides the rest and reflows the bar itself, so the
 // result does not depend on display width, the notch or the frontmost app's menus.
 //
-// The draggable separator is the boundary, as on older macOS versions. It stays
-// at its normal width: native hiding removes other apps without inflating it.
+// The arrow is the hiding boundary. The ordinary separator remains visible at
+// its normal width; moving it does not change which side of the arrow is hidden.
 // The always-hidden
 // separator, when enabled, marks the third section; it shows while expanded so
 // it can be ⌘-dragged, and drops to zero width while collapsed, where macOS
@@ -124,7 +124,7 @@ final class NativeVisibilityEngine: MenuBarEngine {
             guard let self = self else { return }
             guard let layout = layout else {
                 self.lastFailure = .layoutUnavailable
-                self.logUnavailableOnce("layout reading was deferred or the divider is not ready")
+                self.logUnavailableOnce("layout reading was deferred or the arrow is not ready")
                 self.state = .expanded
                 return completion(.unavailable)
             }
@@ -212,16 +212,16 @@ final class NativeVisibilityEngine: MenuBarEngine {
             guard let inventory = inventory else { return body(nil) }
             guard self.isArrangementValid else { return body(nil) }
             // Reading the inventory is asynchronous; the user may have moved a
-            // separator during it. Read the current boundary at delivery time.
-            guard let separator = self.items?.separatorItem,
-                  let boundary = self.itemFrame(separator) else { return body(nil) }
+            // arrow during it. Read the current boundary at delivery time.
+            guard let arrow = self.items?.toggleItem,
+                  let boundary = self.itemFrame(arrow) else { return body(nil) }
             let alwaysHiddenFrame = self.alwaysHiddenEnabled ? self.items?.alwaysHiddenItem.flatMap(self.itemFrame) : nil
             let layout = MenuBarLayoutResolver.resolve(inventory: inventory,
                                                        separatorFrame: boundary,
                                                        alwaysHiddenSeparatorFrame: alwaysHiddenFrame,
                                                        isLTR: self.isLTR(),
                                                        excludingBundle: self.ownBundleIdentifier)
-            NSLog("NativeVisibility: divider x=\(boundary.midX), \(layout.sections.count) apps classified")
+            NSLog("NativeVisibility: arrow x=\(boundary.midX), \(layout.sections.count) apps classified")
             self.layout = layout
             body(layout)
         }
@@ -282,14 +282,13 @@ final class NativeVisibilityEngine: MenuBarEngine {
     }
 
     var isArrangementValid: Bool {
-        // Native hiding allows this app's entire bundle, so the arrow stays
-        // visible even if the user puts it on the divider's hidden side.
-        guard let separator = items?.separatorItem, let boundary = itemFrame(separator) else { return false }
+        // Native hiding always allows this app's bundle, including both controls.
+        guard let arrow = items?.toggleItem, let boundary = itemFrame(arrow) else { return false }
         return boundary.midX.isFinite && boundary.width > 0
     }
 
     var isAlwaysHiddenSeparatorPlaced: Bool {
-        return MenuBarOrder.isItem(items?.alwaysHiddenItem, onHiddenSideOf: items?.separatorItem)
+        return MenuBarOrder.isItem(items?.alwaysHiddenItem, onHiddenSideOf: items?.toggleItem)
     }
 
     private func releaseAssertion() {

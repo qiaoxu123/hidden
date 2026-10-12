@@ -210,30 +210,44 @@ final class NativeVisibilityEngineTests: XCTestCase {
         XCTAssertTrue(items.separatorItem.isVisible)
     }
 
-    func testSeparatorDefinesBoundaryIndependentlyOfArrow() {
+    func testArrowDefinesBoundaryIndependentlyOfSeparator() {
         inventory.items = [item("com.between", x: 1320), item("com.hidden", x: 1250)]
         let engine = NativeVisibilityEngine(items: items, inventory: inventory, visibility: visibility,
             ownBundleIdentifier: "com.dwarvesv.minimalbar",
             itemFrame: { [items = self.items!] statusItem in
                 statusItem === items.toggleItem ? CGRect(x: 1360, y: 0, width: 20, height: 24) : separator
-            }, isLTR: { true })
+            }, isLTR: { true }, isInteractionActive: { false })
         engine.collapse { _ in }
-        XCTAssertEqual(visibility.requests.first?.bundles, ["com.dwarvesv.minimalbar", "com.between"])
+        XCTAssertEqual(visibility.requests.first?.bundles, ["com.dwarvesv.minimalbar"])
         XCTAssertEqual(items.separatorItem.length, 20)
     }
 
-    func testReadsCurrentDividerAfterAsyncInventoryFinishes() {
+    func testBothSidesOfSeparatorStayVisibleWhenToRightOfArrow() {
+        inventory.items = [item("com.hidden", x: 1100), item("com.leftOfLine", x: 1250), item("com.rightOfLine", x: 1400)]
+        let engine = NativeVisibilityEngine(items: items, inventory: inventory, visibility: visibility,
+            ownBundleIdentifier: "com.dwarvesv.minimalbar",
+            itemFrame: { [items = self.items!] statusItem in
+                statusItem === items.toggleItem ? CGRect(x: 1200, y: 0, width: 20, height: 24) : separator
+            }, isLTR: { true }, isInteractionActive: { false })
+        engine.collapse { _ in }
+        XCTAssertEqual(visibility.requests.first?.bundles,
+            ["com.dwarvesv.minimalbar", "com.leftOfLine", "com.rightOfLine"])
+        visibility.succeed(0)
+        XCTAssertTrue(items.separatorItem.isVisible)
+        XCTAssertEqual(items.separatorItem.length, 20)
+    }
+
+    func testReadsCurrentArrowAfterAsyncInventoryFinishes() {
         inventory.defersSnapshots = true
         inventory.items = [item("com.moved", x: 1600)]
-        var dividerX: CGFloat = 1300
+        let dividerX: CGFloat = 1300
         var arrowX: CGFloat = 1500
         let engine = NativeVisibilityEngine(items: items, inventory: inventory, visibility: visibility,
             ownBundleIdentifier: "com.dwarvesv.minimalbar",
             itemFrame: { [items = self.items!] statusItem in
                 CGRect(x: statusItem === items.toggleItem ? arrowX : dividerX, y: 0, width: 20, height: 24)
-            }, isLTR: { true })
+            }, isLTR: { true }, isInteractionActive: { false })
         engine.collapse { _ in }
-        dividerX = 1700
         arrowX = 1800
         inventory.pendingSnapshots.removeFirst()(inventory.items)
         XCTAssertEqual(visibility.requests.first?.bundles, ["com.dwarvesv.minimalbar"])

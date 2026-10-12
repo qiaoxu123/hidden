@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.11.8] - 2026-10-12
+
+### Features
+- Fold icons to the left of the arrow while preserving the ordinary vertical separator and the area to the arrow's right.
+
+### Design Rationale
+- The user positions the arrow before the retained area. Using the ordinary separator as the boundary also hid retained icons between the arrow and separator. Read the arrow's live frame instead, including after asynchronous inventory work.
+
+### Notes & Caveats
+- Place the ordinary separator to the right of the arrow to retain icons on both sides of that line. The optional always-hidden boundary must sit on the hidden side of the arrow. Native hiding still applies to whole apps.
+
 ## [1.11.7] - 2026-10-12
 
 ### Features

@@ -43,3 +43,5 @@ Steps to view always hidden icons:
 "Native hiding unavailable message" = "This build or macOS version does not support native hiding. Use the Direct build on macOS 27.";
 "Menu bar layout unavailable message" = "Icon positions could not be read, or macOS could not apply hiding. Finish any icon dragging, make sure the divider is visible, then try again. On older macOS versions, keep the divider on the hidden side of the arrow.";
 "OK" = "OK";
+
+"Menu bar separator; drag the arrow to choose hidden icons" = "Menu bar separator; Command-drag the arrow to choose hidden icons";
