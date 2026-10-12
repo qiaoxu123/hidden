@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.11.9] - 2026-10-12
+
+### Features
+- Start completed arrow clicks without waiting for the global mouse state to catch up.
+
+### Design Rationale
+- Measured clicks still waited 50–100 ms for queried button state after mouse-up. A delivered mouse-up temporarily overrides that stale state consistently in the controller, engine and background inventory.
+
+### Notes & Caveats
+- A new mouse-down or drag restores the pressed state immediately; event overrides expire 150 ms after occurrence, reject older observations and apply only to the native engine. Normal mouse movement avoids unnecessary button-state reads. Command guards, section boundaries and bounded fresh inventory reads are unchanged.
+
 ## [1.11.8] - 2026-10-12
 
 ### Features

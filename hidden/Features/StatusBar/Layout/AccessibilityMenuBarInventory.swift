@@ -86,7 +86,7 @@ final class AccessibilityMenuBarInventory: MenuBarInventoryProviding {
     static func statusItems(of apps: [(pid: pid_t, bundleIdentifier: String?)],
                             isInteractionActive: () -> Bool = {
                                 CGEventSource.flagsState(.combinedSessionState).contains(.maskCommand) ||
-                                    CGEventSource.buttonState(.combinedSessionState, button: .left)
+                                    MenuBarInteractionState.isLeftMousePressed
                             },
                             read: AttributeReader = AccessibilityMenuBarInventory.readAttribute) -> [MenuBarInventoryItem]? {
         var items: [MenuBarInventoryItem] = []

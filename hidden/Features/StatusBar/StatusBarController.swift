@@ -110,10 +110,12 @@ class StatusBarController: MenuBarItemProvider {
     private func setupRearrangementMonitoring() {
         guard menuBarEngine is NativeVisibilityEngine else { return }
         let mask: NSEvent.EventTypeMask = [.flagsChanged, .mouseMoved, .leftMouseDown, .leftMouseDragged, .leftMouseUp]
-        rearrangementMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] _ in
+        rearrangementMonitor = NSEvent.addGlobalMonitorForEvents(matching: mask) { [weak self] event in
+            MenuBarInteractionState.observe(event.type, at: event.timestamp)
             self?.handleRearrangementInput()
         }
         localRearrangementMonitor = NSEvent.addLocalMonitorForEvents(matching: mask) { [weak self] event in
+            MenuBarInteractionState.observe(event.type, at: event.timestamp)
             self?.handleRearrangementInput()
             return event
         }
@@ -121,6 +123,7 @@ class StatusBarController: MenuBarItemProvider {
 
     private func handleRearrangementInput() {
         let commandPressed = NSEvent.modifierFlags.contains(.command)
+        guard commandPressed || rearrangementActive else { return }
         let mousePressed = MenuBarInteractionState.isLeftMousePressed
         if commandPressed && isMouseInMenuBar && !mousePressed && !isCollapsed {
             beginRearrangement()
@@ -227,6 +230,9 @@ class StatusBarController: MenuBarItemProvider {
     
     @objc func btnExpandCollapsePressed(sender: NSStatusBarButton) {
         let event = NSApp.currentEvent
+        if let event = event {
+            MenuBarInteractionState.observe(event.type, at: event.timestamp, nativeVisibility: menuBarEngine is NativeVisibilityEngine)
+        }
         NSLog("MenuBar: arrow action event=\(event?.type.rawValue ?? 0) modifiers=\(event?.modifierFlags.rawValue ?? 0) appKitButtons=\(NSEvent.pressedMouseButtons) sessionLeft=\(MenuBarInteractionState.isLeftMousePressed)")
         // AXPress synthesis carries no NSEvent; the resolver maps nil to .toggle
         // so VoiceOver can operate the bar.

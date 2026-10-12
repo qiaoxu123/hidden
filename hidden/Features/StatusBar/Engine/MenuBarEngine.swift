@@ -7,13 +7,52 @@
 
 import AppKit
 
+struct MouseReleaseOverride {
+    private var eventDeadline: TimeInterval = 0
+    private var eventPressed = false
+    private var lastEventTime: TimeInterval = -.infinity
+
+    mutating func observe(_ eventType: NSEvent.EventType, at time: TimeInterval, nativeVisibility: Bool = true) {
+        guard nativeVisibility else { return }
+        guard time.isFinite, time >= lastEventTime else { return }
+        switch eventType {
+        case .leftMouseUp: eventPressed = false
+        case .leftMouseDown, .leftMouseDragged: eventPressed = true
+        default: return
+        }
+        lastEventTime = time
+        eventDeadline = time + 0.15
+    }
+
+    func isLeftMousePressed(reportedPressed: Bool, at time: TimeInterval) -> Bool {
+        // A delivered mouse-up is authoritative during the brief period in
+        // which WindowServer's queried button state still lags behind it.
+        time < eventDeadline ? eventPressed : reportedPressed
+    }
+}
+
 enum MenuBarInteractionState {
     static let releasePollingInterval: TimeInterval = 0.01
+    private static let inputLock = NSLock()
+    private static var releaseOverride = MouseReleaseOverride()
+
+    static func observe(_ eventType: NSEvent.EventType, at eventTime: TimeInterval, nativeVisibility: Bool = true) {
+        guard nativeVisibility else { return }
+        guard eventType == .leftMouseUp || eventType == .leftMouseDown || eventType == .leftMouseDragged else { return }
+        inputLock.lock()
+        // Global monitors deliver asynchronously. Use occurrence time so late
+        // callbacks cannot renew an expired event or undo a newer observation.
+        releaseOverride.observe(eventType, at: eventTime)
+        inputLock.unlock()
+    }
     // macOS 27 status-item tracking can leave NSEvent.pressedMouseButtons at
     // mouse-down even after mouse-up and a main-queue hop. Read live session
     // input so ordinary clicks are not mistaken for an ongoing drag.
     static var isLeftMousePressed: Bool {
-        CGEventSource.buttonState(.combinedSessionState, button: .left)
+        inputLock.lock()
+        defer { inputLock.unlock() }
+        return releaseOverride.isLeftMousePressed(reportedPressed: CGEventSource.buttonState(.combinedSessionState, button: .left),
+                                                 at: ProcessInfo.processInfo.systemUptime)
     }
 }
 

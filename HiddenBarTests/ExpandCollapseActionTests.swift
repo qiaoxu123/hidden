@@ -8,6 +8,60 @@
 import AppKit
 import XCTest
 
+final class MouseReleaseOverrideTests: XCTestCase {
+    func testOlderReleaseCannotOverrideNewerPress() {
+        var input = MouseReleaseOverride()
+        input.observe(.leftMouseDown, at: 1.02)
+        input.observe(.leftMouseUp, at: 1)
+        XCTAssertTrue(input.isLeftMousePressed(reportedPressed: false, at: 1.03))
+    }
+
+    func testOlderPressCannotOverrideNewerRelease() {
+        var input = MouseReleaseOverride()
+        input.observe(.leftMouseUp, at: 1.02)
+        input.observe(.leftMouseDown, at: 1)
+        XCTAssertFalse(input.isLeftMousePressed(reportedPressed: true, at: 1.03))
+    }
+
+    func testExpiredReleaseDeliveredLateDoesNotOverrideCurrentPress() {
+        var input = MouseReleaseOverride()
+        input.observe(.leftMouseUp, at: 1)
+        XCTAssertTrue(input.isLeftMousePressed(reportedPressed: true, at: 2))
+    }
+
+    func testLegacyButtonDoesNotOverrideReportedState() {
+        var input = MouseReleaseOverride()
+        input.observe(.leftMouseUp, at: 1, nativeVisibility: false)
+        XCTAssertTrue(input.isLeftMousePressed(reportedPressed: true, at: 1.01))
+    }
+
+    func testNextDragRestoresInteractionProtection() {
+        var input = MouseReleaseOverride()
+        input.observe(.leftMouseUp, at: 1)
+        input.observe(.leftMouseDragged, at: 1.01)
+        XCTAssertTrue(input.isLeftMousePressed(reportedPressed: false, at: 1.02))
+    }
+
+    func testRealMouseUpOverridesLaggingDownState() {
+        var input = MouseReleaseOverride()
+        input.observe(.leftMouseUp, at: 1)
+        XCTAssertFalse(input.isLeftMousePressed(reportedPressed: true, at: 1.01))
+    }
+
+    func testNextMouseDownRestoresInteractionProtection() {
+        var input = MouseReleaseOverride()
+        input.observe(.leftMouseUp, at: 1)
+        input.observe(.leftMouseDown, at: 1.01)
+        XCTAssertTrue(input.isLeftMousePressed(reportedPressed: false, at: 1.02))
+    }
+
+    func testReleaseOverrideExpiresWhenEventsAreMissed() {
+        var input = MouseReleaseOverride()
+        input.observe(.leftMouseUp, at: 1)
+        XCTAssertTrue(input.isLeftMousePressed(reportedPressed: true, at: 1.2))
+    }
+}
+
 final class StatusBarActionDispatcherTests: XCTestCase {
     func testCompletedClickWaitsForLaggingInputThenExecutesOnce() {
         var pressed = true
