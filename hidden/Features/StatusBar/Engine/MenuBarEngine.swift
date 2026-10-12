@@ -7,6 +7,15 @@
 
 import AppKit
 
+enum MenuBarInteractionState {
+    // macOS 27 status-item tracking can leave NSEvent.pressedMouseButtons at
+    // mouse-down even after mouse-up and a main-queue hop. Read live session
+    // input so ordinary clicks are not mistaken for an ongoing drag.
+    static var isLeftMousePressed: Bool {
+        CGEventSource.buttonState(.combinedSessionState, button: .left)
+    }
+}
+
 // StatusBarController decides WHAT the user wants (collapsed or expanded, which
 // sections exist); an engine decides HOW the menu bar is made to do it. Keeping
 // the mechanics here lets an OS release that changes menu-bar layout (#360) get

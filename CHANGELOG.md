@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.11.5] - 2026-10-12
+
+### Features
+- Restore repeated arrow clicks for expanding and collapsing on macOS 27.
+
+### Design Rationale
+- Runtime logs showed ordinary mouse-up clicks ignored because AppKit still reported the left button pressed. Use live session button state consistently across toggle, drag, timer and native activation guards.
+
+### Notes & Caveats
+- Command-drag remains protected. Re-add the application’s permission entry after replacing an ad-hoc signed build.
+
 ## [1.11.4] - 2026-10-12
 
 ### Features

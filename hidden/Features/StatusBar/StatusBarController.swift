@@ -121,7 +121,7 @@ class StatusBarController: MenuBarItemProvider {
 
     private func handleRearrangementInput() {
         let commandPressed = NSEvent.modifierFlags.contains(.command)
-        let mousePressed = NSEvent.pressedMouseButtons & 1 != 0
+        let mousePressed = MenuBarInteractionState.isLeftMousePressed
         if commandPressed && isMouseInMenuBar && !mousePressed && !isCollapsed {
             beginRearrangement()
         }
@@ -136,7 +136,7 @@ class StatusBarController: MenuBarItemProvider {
         let work = DispatchWorkItem { [weak self] in
             guard let self = self else { return }
             self.rearrangementEnd = nil
-            guard !NSEvent.modifierFlags.contains(.command), NSEvent.pressedMouseButtons & 1 == 0 else { return }
+            guard !NSEvent.modifierFlags.contains(.command), !MenuBarInteractionState.isLeftMousePressed else { return }
             self.rearrangementActive = false
             self.menuBarEngine.expand()
             self.autoCollapseIfNeeded()
@@ -161,7 +161,7 @@ class StatusBarController: MenuBarItemProvider {
         hoverMonitor = NSEvent.addGlobalMonitorForEvents(matching: .mouseMoved) { [weak self] _ in
             guard let self = self else { return }
             guard self.isCollapsed && self.isMouseInMenuBar &&
-                    !NSEvent.modifierFlags.contains(.command) && NSEvent.pressedMouseButtons & 1 == 0 else {
+                    !NSEvent.modifierFlags.contains(.command) && !MenuBarInteractionState.isLeftMousePressed else {
                 self.hoverDwellTimer?.invalidate()
                 self.hoverDwellTimer = nil
                 return
@@ -172,7 +172,7 @@ class StatusBarController: MenuBarItemProvider {
                 guard let self = self else { return }
                 self.hoverDwellTimer = nil
                 if self.isCollapsed && self.isMouseInMenuBar &&
-                    !NSEvent.modifierFlags.contains(.command) && NSEvent.pressedMouseButtons & 1 == 0 {
+                    !NSEvent.modifierFlags.contains(.command) && !MenuBarInteractionState.isLeftMousePressed {
                     self.expandMenubar()
                 }
             }
@@ -225,6 +225,7 @@ class StatusBarController: MenuBarItemProvider {
     
     @objc func btnExpandCollapsePressed(sender: NSStatusBarButton) {
         let event = NSApp.currentEvent
+        NSLog("MenuBar: arrow action event=\(event?.type.rawValue ?? 0) modifiers=\(event?.modifierFlags.rawValue ?? 0) appKitButtons=\(NSEvent.pressedMouseButtons) sessionLeft=\(MenuBarInteractionState.isLeftMousePressed)")
         // AXPress synthesis carries no NSEvent; the resolver maps nil to .toggle
         // so VoiceOver can operate the bar.
         switch ExpandCollapseActionResolver.action(eventType: event?.type, optionPressed: event?.modifierFlags.contains(.option) ?? false) {
@@ -304,8 +305,9 @@ class StatusBarController: MenuBarItemProvider {
     func expandCollapseIfNeeded(isShortcut: Bool = false) {
         let commandPressed = NSEvent.modifierFlags.contains(.command)
         let action = MenuBarToggleActionResolver.action(state: menuBarEngine.state, isShortcut: isShortcut,
-            commandPressed: commandPressed, leftMousePressed: NSEvent.pressedMouseButtons & 1 != 0,
+            commandPressed: commandPressed, leftMousePressed: MenuBarInteractionState.isLeftMousePressed,
             hasDeferredCollapse: deferredCollapse.isPending, engineBusy: menuBarEngine.isBusy)
+        NSLog("MenuBar: toggle state=\(menuBarEngine.state) action=\(action) appKitButtons=\(NSEvent.pressedMouseButtons) sessionLeft=\(MenuBarInteractionState.isLeftMousePressed) command=\(commandPressed) locked=\(isToggle)")
         guard action != .ignore else { return }
         //prevented rapid click cause icon show many in Dock
         if isToggle {return}
@@ -322,7 +324,7 @@ class StatusBarController: MenuBarItemProvider {
             shortcutCollapseTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] timer in
                 guard let self = self else { return timer.invalidate() }
                 let interactionActive = NSEvent.modifierFlags.contains(.command) ||
-                    NSEvent.pressedMouseButtons & 1 != 0 || self.rearrangementActive
+                    MenuBarInteractionState.isLeftMousePressed || self.rearrangementActive
                 self.deferredCollapse.performIfReady(isInteractionActive: interactionActive, engine: self.menuBarEngine) {
                     timer.invalidate()
                     self.shortcutCollapseTimer = nil
@@ -349,7 +351,7 @@ class StatusBarController: MenuBarItemProvider {
             presentHidingFailure(reason)
             return
         }
-        guard !rearrangementActive, !NSEvent.modifierFlags.contains(.command), NSEvent.pressedMouseButtons & 1 == 0 else {
+        guard !rearrangementActive, !NSEvent.modifierFlags.contains(.command), !MenuBarInteractionState.isLeftMousePressed else {
             autoCollapseIfNeeded()
             return
         }
@@ -372,7 +374,7 @@ class StatusBarController: MenuBarItemProvider {
             case .unavailable:
                 self.didFailToCollapseMenuBar()
                 if userInitiated && !self.rearrangementActive &&
-                    !NSEvent.modifierFlags.contains(.command) && NSEvent.pressedMouseButtons & 1 == 0 {
+                    !NSEvent.modifierFlags.contains(.command) && !MenuBarInteractionState.isLeftMousePressed {
                     self.presentHidingFailure(self.menuBarEngine.failureReason ?? .layoutUnavailable)
                 }
             }
@@ -484,7 +486,7 @@ class StatusBarController: MenuBarItemProvider {
             // Intentionally unbounded; each re-arm invalidates the previous timer,
             // so deferral never accumulates timers.
             if self.isMouseInMenuBar || self.isPreferencesWindowVisible ||
-                NSEvent.modifierFlags.contains(.command) || NSEvent.pressedMouseButtons & 1 != 0 {
+                NSEvent.modifierFlags.contains(.command) || MenuBarInteractionState.isLeftMousePressed {
                 self.startTimerToAutoHide()
             } else {
                 self.collapseMenuBar()

@@ -77,7 +77,7 @@ final class NativeVisibilityEngine: MenuBarEngine {
          itemFrame: @escaping (NSStatusItem) -> CGRect? = { $0.button?.window?.frame },
          isLTR: @escaping () -> Bool = { Constant.isUsingLTRLanguage },
          isInteractionActive: @escaping () -> Bool = {
-             NSEvent.modifierFlags.contains(.command) || NSEvent.pressedMouseButtons & 1 != 0
+             NSEvent.modifierFlags.contains(.command) || MenuBarInteractionState.isLeftMousePressed
          }) {
         self.items = items
         self.inventory = inventory
