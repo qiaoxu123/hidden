@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.11.6] - 2026-10-12
+
+### Features
+- Preserve completed arrow clicks even while global input state still reports the button pressed.
+
+### Design Rationale
+- A main-queue hop still runs in AppKit's nested tracking loop, and session state can lag even in default mode. Retain either toggle direction until release; preserve the current visibility restriction while waiting and capture the originating Command modifier.
+
+### Notes & Caveats
+- Existing input and Command-drag guards remain active after tracking ends.
+
 ## [1.11.5] - 2026-10-12
 
 ### Features

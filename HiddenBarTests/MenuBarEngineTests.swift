@@ -189,7 +189,7 @@ final class NativeVisibilityEngineTests: XCTestCase {
         return NativeVisibilityEngine(items: items, inventory: inventory, visibility: visibility,
                                       ownBundleIdentifier: "com.dwarvesv.minimalbar",
                                       itemFrame: { $0 === items.alwaysHiddenItem ? alwaysHiddenSeparator : separator },
-                                      isLTR: { true })
+                                      isLTR: { true }, isInteractionActive: { false })
     }
 
     func testCollapseKeepsOnlyVisibleAppsAndSystemItems() {

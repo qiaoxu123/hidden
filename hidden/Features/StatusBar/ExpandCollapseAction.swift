@@ -7,6 +7,29 @@
 
 import AppKit
 
+enum StatusBarActionDispatcher {
+    static func afterTracking(commandPressed: Bool = false,
+                              isMousePressed: @escaping () -> Bool = { MenuBarInteractionState.isLeftMousePressed },
+                              _ action: @escaping () -> Void) {
+        // Preserve the initiating click's intent even if Command is released
+        // before default mode resumes. A Command-click belongs to rearranging.
+        guard !commandPressed else { return }
+        // The main dispatch queue also drains inside AppKit's nested tracking
+        // loop. Restrict this work to default mode, after the click has ended.
+        RunLoop.main.perform(inModes: [.default]) {
+            guard isMousePressed() else { return action() }
+            // macOS can still report down after leaving tracking mode. Retain
+            // either toggle direction until release; never discard this click
+            // or temporarily reveal the always-hidden section while waiting.
+            Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
+                guard !isMousePressed() else { return }
+                timer.invalidate()
+                action()
+            }
+        }
+    }
+}
+
 // What a press on the expand/collapse button should do. Kept as a pure mapping
 // so the decision is unit-testable without a live status item or a real NSEvent.
 enum ExpandCollapseAction {

@@ -232,7 +232,9 @@ class StatusBarController: MenuBarItemProvider {
         case .toggle:
             // AppKit can still report the button as pressed inside mouse-up.
             // Evaluate drag guards after this event has finished dispatching.
-            DispatchQueue.main.async { [weak self] in self?.expandCollapseIfNeeded() }
+            StatusBarActionDispatcher.afterTracking(commandPressed: event?.modifierFlags.contains(.command) ?? false) {
+                [weak self] in self?.expandCollapseIfNeeded()
+            }
         case .contextMenu:
             // Right-click opens the same context menu the separator has (#356),
             // making settings reachable from the control everyone clicks.

@@ -8,6 +8,51 @@
 import AppKit
 import XCTest
 
+final class StatusBarActionDispatcherTests: XCTestCase {
+    func testCompletedClickWaitsForLaggingInputThenExecutesOnce() {
+        var pressed = true
+        var count = 0
+        StatusBarActionDispatcher.afterTracking(isMousePressed: { pressed }) { count += 1 }
+        let deadline = Date(timeIntervalSinceNow: 0.08)
+        while Date() < deadline { RunLoop.main.run(mode: .default, before: deadline) }
+        XCTAssertEqual(count, 0, "Keep the current visibility restriction while input still reports down")
+        pressed = false
+        let releasedDeadline = Date(timeIntervalSinceNow: 0.15)
+        while Date() < releasedDeadline { RunLoop.main.run(mode: .default, before: releasedDeadline) }
+        XCTAssertEqual(count, 1, "A completed click must be retained and executed exactly once")
+    }
+    func testCommandClickIsIgnoredAfterCommandIsReleased() {
+        var commandPressed = true
+        var invoked = false
+        StatusBarActionDispatcher.afterTracking(commandPressed: commandPressed) { invoked = true }
+        commandPressed = false
+        let timer = Timer(timeInterval: 0.01, repeats: false) { _ in }
+        RunLoop.main.add(timer, forMode: .default)
+        RunLoop.main.run(mode: .default, before: Date(timeIntervalSinceNow: 0.02))
+        XCTAssertFalse(commandPressed)
+        XCTAssertFalse(invoked)
+        timer.invalidate()
+    }
+
+    func testToggleWaitsUntilMouseTrackingModeEnds() {
+        XCTAssertTrue(Thread.isMainThread)
+        var invoked = false
+        StatusBarActionDispatcher.afterTracking(isMousePressed: { false }) { invoked = true }
+        // Keep this nested tracking loop alive, as NSStatusBarButton does while
+        // dispatching mouse-up. A main-queue hop can run in this same loop.
+        let trackingTimer = Timer(timeInterval: 0.02, repeats: false) { _ in }
+        RunLoop.main.add(trackingTimer, forMode: .eventTracking)
+        RunLoop.main.run(mode: .eventTracking, before: Date(timeIntervalSinceNow: 0.02))
+        XCTAssertFalse(invoked, "A toggle must not execute while AppKit still tracks the click")
+        let deadline = Date(timeIntervalSinceNow: 0.2)
+        while !invoked && Date() < deadline {
+            RunLoop.main.run(mode: .default, before: deadline)
+        }
+        XCTAssertTrue(invoked, "The toggle must execute once normal event processing resumes")
+        trackingTimer.invalidate()
+    }
+}
+
 final class ExpandCollapseActionTests: XCTestCase {
 
     // Assistive synthesis (VoiceOver AXPress) produces no NSEvent; a nil event
