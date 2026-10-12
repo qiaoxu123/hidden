@@ -21,7 +21,7 @@ enum StatusBarActionDispatcher {
             // macOS can still report down after leaving tracking mode. Retain
             // either toggle direction until release; never discard this click
             // or temporarily reveal the always-hidden section while waiting.
-            Timer.scheduledTimer(withTimeInterval: 0.05, repeats: true) { timer in
+            Timer.scheduledTimer(withTimeInterval: MenuBarInteractionState.releasePollingInterval, repeats: true) { timer in
                 guard !isMousePressed() else { return }
                 timer.invalidate()
                 action()

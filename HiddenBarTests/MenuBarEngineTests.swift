@@ -564,6 +564,37 @@ final class LegacyLengthEngineTests: XCTestCase {
 }
 
 final class AccessibilityMenuBarInventoryTests: XCTestCase {
+    func testParallelReadsOverlapWithBoundedConcurrencyAndStableResults() {
+        let apps = (1...9).map { (pid: pid_t($0), bundleIdentifier: Optional("app.\($0)")) }
+        let lock = NSLock()
+        var active = 0
+        var peak = 0
+        let items = AccessibilityMenuBarInventory.parallelStatusItems(of: apps) { app in
+            lock.lock()
+            active += 1
+            peak = max(peak, active)
+            lock.unlock()
+            Thread.sleep(forTimeInterval: 0.01)
+            lock.lock()
+            active -= 1
+            lock.unlock()
+            return [MenuBarInventoryItem(bundleIdentifier: app.bundleIdentifier, frame: .null, mustKeepVisible: true)]
+        }
+        XCTAssertGreaterThan(peak, 1, "Independent AX endpoints should not wait for one another")
+        XCTAssertLessThanOrEqual(peak, 3, "Bound AX traffic during interaction")
+        XCTAssertEqual(items?.compactMap(\.bundleIdentifier), apps.compactMap(\.bundleIdentifier))
+        XCTAssertTrue(items?.allSatisfy(\.mustKeepVisible) ?? false)
+    }
+
+    func testOneCancelledParallelReadDiscardsTheWholeInventory() {
+        let apps = (1...6).map { (pid: pid_t($0), bundleIdentifier: Optional("app.\($0)")) }
+        let items = AccessibilityMenuBarInventory.parallelStatusItems(of: apps) { app in
+            if app.pid == 2 { return nil }
+            return [MenuBarInventoryItem(bundleIdentifier: app.bundleIdentifier, frame: .zero)]
+        }
+        XCTAssertNil(items, "Never hide based on an incomplete or cancelled walk")
+    }
+
     func testNoMenuBarIsNotAReadFailure() {
         let result = AccessibilityMenuBarInventory.statusItems(
             of: [(pid: getpid(), bundleIdentifier: "com.app")], isInteractionActive: { false },

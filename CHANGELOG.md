@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.11.7] - 2026-10-12
+
+### Features
+- Reduce arrow response delay with 10 ms input-release checks and up to three concurrent app inventory reads.
+
+### Design Rationale
+- Repeated collapse still reads fresh positions, while independent Accessibility endpoints no longer wait in one long serial queue. Any cancelled or unidentifiable read discards the whole snapshot.
+
+### Notes & Caveats
+- Parallel reads keep a strict concurrency bound and retain unreadable apps in the visible allow-list. Native menu-bar animation remains managed by macOS.
+
 ## [1.11.6] - 2026-10-12
 
 ### Features

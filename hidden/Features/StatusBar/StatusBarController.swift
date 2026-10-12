@@ -323,7 +323,7 @@ class StatusBarController: MenuBarItemProvider {
         case .deferCollapse:
             timer?.invalidate()
             deferredCollapse.request()
-            shortcutCollapseTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] timer in
+            shortcutCollapseTimer = Timer.scheduledTimer(withTimeInterval: MenuBarInteractionState.releasePollingInterval, repeats: true) { [weak self] timer in
                 guard let self = self else { return timer.invalidate() }
                 let interactionActive = NSEvent.modifierFlags.contains(.command) ||
                     MenuBarInteractionState.isLeftMousePressed || self.rearrangementActive

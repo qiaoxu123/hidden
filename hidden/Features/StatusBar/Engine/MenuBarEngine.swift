@@ -8,6 +8,7 @@
 import AppKit
 
 enum MenuBarInteractionState {
+    static let releasePollingInterval: TimeInterval = 0.01
     // macOS 27 status-item tracking can leave NSEvent.pressedMouseButtons at
     // mouse-down even after mouse-up and a main-queue hop. Read live session
     // input so ordinary clicks are not mistaken for an ongoing drag.

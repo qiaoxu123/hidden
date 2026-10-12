@@ -42,12 +42,40 @@ final class AccessibilityMenuBarInventory: MenuBarInventoryProviding {
             .filter { $0.processIdentifier != ownPID && $0.bundleURL?.pathExtension == "app" }
             .map { (pid: $0.processIdentifier, bundleIdentifier: $0.bundleIdentifier) }
         DispatchQueue.global(qos: .userInitiated).async {
-            let items = Self.statusItems(of: apps)
+            let items = Self.parallelStatusItems(of: apps)
             DispatchQueue.main.async { completion(items) }
         }
     }
 
     typealias AttributeReader = (AXUIElement, CFString) -> (AXError, CFTypeRef?)
+
+    static func parallelStatusItems(of apps: [(pid: pid_t, bundleIdentifier: String?)],
+                                    readApp: @escaping ((pid: pid_t, bundleIdentifier: String?)) -> [MenuBarInventoryItem]? = {
+                                        AccessibilityMenuBarInventory.statusItems(of: [$0])
+                                    }) -> [MenuBarInventoryItem]? {
+        let workers = min(3, apps.count)
+        guard workers > 0 else { return [] }
+        let lock = NSLock()
+        var results = [[MenuBarInventoryItem]?](repeating: nil, count: apps.count)
+        var cancelled = false
+        // A few independent app endpoints can answer concurrently. Keep the
+        // bound small so this does not flood AX while macOS handles dragging.
+        DispatchQueue.concurrentPerform(iterations: workers) { worker in
+            for index in stride(from: worker, to: apps.count, by: workers) {
+                lock.lock()
+                let stopped = cancelled
+                lock.unlock()
+                if stopped { return }
+                let partial = readApp(apps[index])
+                lock.lock()
+                results[index] = partial
+                if partial == nil { cancelled = true }
+                lock.unlock()
+            }
+        }
+        guard !cancelled else { return nil }
+        return results.compactMap { $0 }.flatMap { $0 }
+    }
 
     private static func readAttribute(_ element: AXUIElement, _ attribute: CFString) -> (AXError, CFTypeRef?) {
         var value: CFTypeRef?
