@@ -24,10 +24,10 @@ struct MouseReleaseOverride {
         eventDeadline = time + 0.15
     }
 
-    func isLeftMousePressed(reportedPressed: Bool, at time: TimeInterval) -> Bool {
+    func isLeftMousePressed(reportedPressed: @autoclosure () -> Bool, at time: TimeInterval) -> Bool {
         // A delivered mouse-up is authoritative during the brief period in
         // which WindowServer's queried button state still lags behind it.
-        time < eventDeadline ? eventPressed : reportedPressed
+        time < eventDeadline ? eventPressed : reportedPressed()
     }
 }
 

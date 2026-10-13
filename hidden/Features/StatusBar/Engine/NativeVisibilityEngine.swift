@@ -205,9 +205,11 @@ final class NativeVisibilityEngine: MenuBarEngine {
         generation += 1
         let generation = self.generation
         layoutPending = true
+        let inventoryStarted = ProcessInfo.processInfo.systemUptime
         inventory.snapshot { [weak self] inventory in
             guard let self = self, generation == self.generation else { return }
             self.layoutPending = false
+            NSLog("NativeVisibility: inventory completed in %.1f ms", (ProcessInfo.processInfo.systemUptime - inventoryStarted) * 1000)
             guard !self.isInteractionActive() else { return body(nil) }
             guard let inventory = inventory else { return body(nil) }
             guard self.isArrangementValid else { return body(nil) }
@@ -238,6 +240,7 @@ final class NativeVisibilityEngine: MenuBarEngine {
         let generation = self.generation
         activationPending = true
         let allowed = (ownBundleIdentifier.map { [$0] } ?? []) + bundles
+        let activationStarted = ProcessInfo.processInfo.systemUptime
         visibility.activate(allowedSystemItems: Self.systemItemsToKeep,
                             allowedBundleIdentifiers: allowed) { [weak self] result in
             guard let self = self, generation == self.generation else {
@@ -245,6 +248,7 @@ final class NativeVisibilityEngine: MenuBarEngine {
                 return
             }
             self.activationPending = false
+            NSLog("NativeVisibility: activation completed in %.1f ms", (ProcessInfo.processInfo.systemUptime - activationStarted) * 1000)
             switch result {
             case .success(let newAssertion):
                 guard !self.isInteractionActive() else {

@@ -172,3 +172,16 @@ final class BusyMenuBarToggleTests: XCTestCase {
             engineBusy: true), .deferCollapse)
     }
 }
+
+final class MouseStateQueryPerformanceTests: XCTestCase {
+    func testFreshEventSkipsSessionQueryAndExpiryResumesQuery() {
+        var state = MouseReleaseOverride()
+        state.observe(.leftMouseUp, at: 10)
+        var reads = 0
+        func query() -> Bool { reads += 1; return true }
+        XCTAssertFalse(state.isLeftMousePressed(reportedPressed: query(), at: 10.01))
+        XCTAssertEqual(reads, 0)
+        XCTAssertTrue(state.isLeftMousePressed(reportedPressed: query(), at: 10.16))
+        XCTAssertEqual(reads, 1)
+    }
+}

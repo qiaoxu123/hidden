@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.11.10] - 2026-10-13
+
+### Features
+- Skip redundant session mouse-state queries while a fresh native input event is authoritative.
+- Record inventory and activation completion times for diagnosing response delays.
+
+### Design Rationale
+- Controller and parallel inventory guards repeatedly queried WindowServer even when fresh input events already determined the result. Evaluate the fallback query lazily; resume live queries immediately after expiry.
+
+### Notes & Caveats
+- Click debounce, fresh position scans, drag guards and arrow-based boundaries are retained. System animation completion is not measured by the activation callback.
+
 ## [1.11.9] - 2026-10-12
 
 ### Features
